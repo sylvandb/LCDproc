@@ -22,8 +22,6 @@
 
 #undef CFONTZ_DRV
 
-#undef CFONTZ633_DRV
-
 #undef CWLNX_DRV
 
 #undef CURSES_DRV
