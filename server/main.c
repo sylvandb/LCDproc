@@ -171,8 +171,10 @@ main (int argc, char **argv)
 				i++;
 				if (0 == strcmp (argv[i], "off"))
 					disable_server_screen = 1;
-				if (0 == strcmp (argv[i], "on"))
+				else if (0 == strcmp (argv[i], "on"))
 					disable_server_screen = 0;
+				else 
+					HelpScreen ();
 			}
 		} else if (0 == strcmp (argv[i], "-w") || 0 == strcmp (argv[i], "--waittime")) {
 			if (i + 1 > argc)
