@@ -123,7 +123,7 @@ drawchar2fb (int x, int y, unsigned char z)
 		    (((fontmap[(int) z][j] * 2) & (1 << i)) / (1 << i)) *
 		    (1 << j);
 	    }
-	  lcd.framebuf[(y * 122) + (x * 6) + (6 - i)] = k;
+	  sed1520->framebuf[(y * 122) + (x * 6) + (6 - i)] = k;
       }
 
 }
@@ -184,7 +184,7 @@ sed1520_init (struct lcd_logical_driver *driver, char *args)
 	  else if (0 == strcmp (argv[i], "-h")
 		   || 0 == strcmp (argv[i], "--help"))
 	    {
-		int i;
+		//int i;
 		printf
 		    ("LCDproc sed1520 driver\n\t-p n\t--port n\tSelect the output device to use port n\n");
 		printf ("put the options in quotes like this:  '-p 0x278'\n");
@@ -217,12 +217,16 @@ sed1520_init (struct lcd_logical_driver *driver, char *args)
     writecommand (0xAF, CS1 + CS2);
     writecommand (0xC0, CS1 + CS2);
     selectpage (3);
+
+    driver->cellwid = 6;
+    driver->cellhgt = 8;
+
     // The Framebuffer LCDproc allocates by default is too small,
-    // so we free() it and allocate one of adequate size.
+    // so we free() it (if it exists) and allocate one of adequate size.
     if (!driver->framebuf)
 	free (driver->framebuf);
 
-    driver->framebuf = malloc (488);
+    driver->framebuf = malloc (122 * 4);
     if (!driver->framebuf)
       {
 	  sed1520_close ();
@@ -232,10 +236,6 @@ sed1520_init (struct lcd_logical_driver *driver, char *args)
     // clear screen
     memset (driver->framebuf, 0, 122 * 4);
 
-    driver->cellwid = 6;
-    driver->cellhgt = 8;	// FIXME: lcd.cellwid always stays 5
-    // regardless what it is set to here. This is
-    //  a bug but not inside this driver.
     driver->clear = sed1520_clear;
     driver->string = sed1520_string;
     driver->chr = sed1520_chr;
@@ -251,15 +251,15 @@ sed1520_init (struct lcd_logical_driver *driver, char *args)
     driver->icon = sed1520_icon;
     driver->draw_frame = sed1520_draw_frame;
     // We dont't need init for vbar,hbar and friends.
-    driver->init_hbar = NULL;
-    driver->init_vbar = NULL;
-    driver->init_num = NULL;
+    //driver->init_hbar = NULL;
+    //driver->init_vbar = NULL;
+    //driver->init_num = NULL;
     // Neither contrast nor backlight are controllable.
-    driver->contrast = NULL;
-    driver->backlight = NULL;
+    //driver->contrast = NULL;
+    //driver->backlight = NULL;
     // There are some unused input lines that may be used for input,
     // but nothing is programmed so far.
-    driver->getkey = NULL;
+    //driver->getkey = NULL;
     return 200;			// 200 is arbitrary.  (must be 1 or more)
 }
 
@@ -269,9 +269,9 @@ sed1520_init (struct lcd_logical_driver *driver, char *args)
 void
 sed1520_close ()
 {
-    if (lcd.framebuf != NULL)
-	free (lcd.framebuf);
-    lcd.framebuf = NULL;
+    if (sed1520->framebuf != NULL)
+	free (sed1520->framebuf);
+    sed1520->framebuf = NULL;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -280,7 +280,7 @@ sed1520_close ()
 void
 sed1520_clear ()
 {
-    memset (lcd.framebuf, 0, 488);
+    memset (sed1520->framebuf, 0, 488);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -290,7 +290,7 @@ sed1520_clear ()
 void
 sed1520_flush ()
 {
-    lcd.draw_frame (lcd.framebuf);
+    sed1520->draw_frame (sed1520->framebuf);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -355,7 +355,7 @@ sed1520_num (int x, int num)
 			    if (*(fontbigdp[(z * 8) + i] + c) == '.')
 				s += 128;
 			}
-		      lcd.framebuf[(z * 122) + 122 + (x * 6) + c] = s;
+		      sed1520->framebuf[(z * 122) + 122 + (x * 6) + c] = s;
 		  }
 	    }
       }
@@ -373,7 +373,7 @@ sed1520_num (int x, int num)
 			    if (*(fontbignum[num][z * 8 + i] + c) == '.')
 				s += 128;
 			}
-		      lcd.framebuf[(z * 122) + 122 + (x * 6) + c] = s;
+		      sed1520->framebuf[(z * 122) + 122 + (x * 6) + c] = s;
 		  }
 	    }
       }
@@ -387,7 +387,7 @@ sed1520_num (int x, int num)
 // can be altered. !Important: Characters have to be redraw
 // by drawchar2fb() to show their new shape. Because we use
 // a non-standard 6x8 font a *dat not calculated from
-// lcd.width and lcd.height will fail. 
+// sed1520->width and sed1520->height will fail. 
 //
 void
 sed1520_set_char (int n, char *dat)
@@ -432,12 +432,12 @@ sed1520_vbar (int x, int len)
 		    k += 1 << (7 - i);
 	    }
 
-	  lcd.framebuf[((3 - j) * 122) + (x * 6)] = 0;
-	  lcd.framebuf[((3 - j) * 122) + (x * 6) + 1] = 0;
-	  lcd.framebuf[((3 - j) * 122) + (x * 6) + 2] = k;
-	  lcd.framebuf[((3 - j) * 122) + (x * 6) + 3] = k;
-	  lcd.framebuf[((3 - j) * 122) + (x * 6) + 4] = k;
-	  lcd.framebuf[((3 - j) * 122) + (x * 6) + 5] = 0;
+	  sed1520->framebuf[((3 - j) * 122) + (x * 6)] = 0;
+	  sed1520->framebuf[((3 - j) * 122) + (x * 6) + 1] = 0;
+	  sed1520->framebuf[((3 - j) * 122) + (x * 6) + 2] = k;
+	  sed1520->framebuf[((3 - j) * 122) + (x * 6) + 3] = k;
+	  sed1520->framebuf[((3 - j) * 122) + (x * 6) + 4] = k;
+	  sed1520->framebuf[((3 - j) * 122) + (x * 6) + 5] = 0;
 	  len -= 8;
       }
 
@@ -459,7 +459,7 @@ sed1520_hbar (int x, int y, int len)
 	return;
 
     for (i = 0; i < len; i++)
-	lcd.framebuf[(y * 122) + (x * 6) + i] = 0x3C;
+	sed1520->framebuf[(y * 122) + (x * 6) + i] = 0x3C;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -532,10 +532,10 @@ sed1520_draw_frame (char *dat)
     for (i = 0; i < 4; i++)
       {
 	  selectpage (i);
-	  selectcolumn (0, CS2) ;
+	  selectcolumn (0, CS2) ;
 	  for (j = 0; j < 61; j++)
 	      writedata (dat[j + (i * 122)], CS2);
-	  selectcolumn (0, CS1) ;
+	  selectcolumn (0, CS1) ;
 	  for (j = 61; j < 122; j++)
 	      writedata (dat[j + (i * 122)], CS1);
       }

@@ -259,7 +259,7 @@ stv5730_drawchar2fb (int x, int y, unsigned char z)
 
     if (x < 0 || x >= STV5730_WID || y < 0 || y >= STV5730_HGT)
 	return;
-    lcd.framebuf[(y * STV5730_WID) + x] = stv5730_to_ascii[(unsigned int) z];
+    stv5730->framebuf[(y * STV5730_WID) + x] = stv5730_to_ascii[(unsigned int) z];
 
 }
 
@@ -320,7 +320,7 @@ stv5730_init (struct lcd_logical_driver *driver, char *args)
 	  else if (0 == strcmp (argv[i], "-h")
 		   || 0 == strcmp (argv[i], "--help"))
 	    {
-		int i;
+		//int i;
 		printf
 		    ("LCDproc stv5730 driver\n\t-p n\t--port n\tSelect the output device to use port n\n");
 		printf ("put the options in quotes like this:  '-p 0x278'\n");
@@ -447,9 +447,8 @@ stv5730_init (struct lcd_logical_driver *driver, char *args)
     memset (driver->framebuf, 0, STV5730_WID * STV5730_HGT);
 
     driver->cellwid = 4;
-    driver->cellhgt = 6;	// FIXME: lcd.cellwid always stays 5
-    // regardless what it is set to here. This is
-    // a bug but not inside this driver.
+    driver->cellhgt = 6;
+
     driver->clear = stv5730_clear;
     driver->string = stv5730_string;
     driver->chr = stv5730_chr;
@@ -461,20 +460,20 @@ stv5730_init (struct lcd_logical_driver *driver, char *args)
     driver->flush = stv5730_flush;
     driver->flush_box = stv5730_flush_box;
     // We dont't have any programmable chars.
-    driver->set_char = NULL;
+    //driver->set_char = NULL;
 
     driver->icon = stv5730_icon;
     driver->draw_frame = stv5730_draw_frame;
     // We dont't need init for vbar,hbar and friends.
-    driver->init_hbar = NULL;
-    driver->init_vbar = NULL;
-    driver->init_num = NULL;
+    //driver->init_hbar = NULL;
+    //driver->init_vbar = NULL;
+    //driver->init_num = NULL;
     // Neither contrast nor backlight are controllable.
-    driver->contrast = NULL;
-    driver->backlight = NULL;
+    //driver->contrast = NULL;
+    //driver->backlight = NULL;
     // There are some unused input lines that may be used for input,
     // but nothing is programmed so far.
-    driver->getkey = NULL;
+    //driver->getkey = NULL;
     return 200;			// 200 is arbitrary.  (must be 1 or more)
 }
 
@@ -484,9 +483,9 @@ stv5730_init (struct lcd_logical_driver *driver, char *args)
 void
 stv5730_close ()
 {
-    if (lcd.framebuf != NULL)
-	free (lcd.framebuf);
-    lcd.framebuf = NULL;
+    if (stv5730->framebuf != NULL)
+	free (stv5730->framebuf);
+    stv5730->framebuf = NULL;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -495,7 +494,7 @@ stv5730_close ()
 void
 stv5730_clear ()
 {
-    memset (lcd.framebuf, 0x0B, STV5730_WID * STV5730_HGT);
+    memset (stv5730->framebuf, 0x0B, STV5730_WID * STV5730_HGT);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -505,7 +504,7 @@ stv5730_clear ()
 void
 stv5730_flush ()
 {
-    lcd.draw_frame (lcd.framebuf);
+    stv5730->draw_frame (stv5730->framebuf);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -589,11 +588,11 @@ stv5730_vbar (int x, int len)
 
 	  if (len >= (i + 6))
 	    {
-		lcd.framebuf[((10 - (i / 6)) * STV5730_WID) + x] = 0x77;
+		stv5730->framebuf[((10 - (i / 6)) * STV5730_WID) + x] = 0x77;
 	    }
 	  else
 	    {
-		lcd.framebuf[((10 - (i / 6)) * STV5730_WID) + x] =
+		stv5730->framebuf[((10 - (i / 6)) * STV5730_WID) + x] =
 		    0x72 + (len % 6);
 	    }
       }
@@ -622,11 +621,11 @@ stv5730_hbar (int x, int y, int len)
 
 	  if (len >= (i + 4))
 	    {
-		lcd.framebuf[(y * STV5730_WID) + x + (i / 5)] = 0x64;
+		stv5730->framebuf[(y * STV5730_WID) + x + (i / 5)] = 0x64;
 	    }
 	  else
 	    {
-		lcd.framebuf[(y * STV5730_WID) + x + (i / 5)] =
+		stv5730->framebuf[(y * STV5730_WID) + x + (i / 5)] =
 		    0x65 + (len % 5);
 	    }
       }

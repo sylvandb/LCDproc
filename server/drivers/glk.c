@@ -1,3 +1,10 @@
+/*
+ * MatrixOrbital GLK Graphic Display Driver
+ *
+ * http://www.matrixorbital.com
+ *
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -5,10 +12,23 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/errno.h>
-#include <sys/time.h>
+
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+#if TIME_WITH_SYS_TIME
+# include <sys/time.h>
+# include <time.h>
+#else
+# if HAVE_SYS_TIME_H
+#  include <sys/time.h>
+# else
+#  include <time.h>
+# endif
+#endif
 
 #include "lcd.h"
-#include "../../shared/str.h"
+#include "shared/str.h"
 #include "glk.h"
 #include "glkproto.h"
 
@@ -141,6 +161,8 @@ int glk_init(struct lcd_logical_driver *driver, char *args)
       width = 20 ; height = 4 ; gpo_count = 2 ; break ;
     case 0x23 :  // GLK12232-25SM
       width = 20 ; height = 4 ; gpo_count = 2 ; break ;
+    case 0x24 :  // GLK12232-25SM-Penguin
+      width = 20 ; height = 4 ; gpo_count = 2 ; break ;
     default :
       fprintf( stderr, "glk: Unrecognized module type: 0x%02x\n", i );
       return( -1 );
@@ -220,9 +242,9 @@ int glk_init(struct lcd_logical_driver *driver, char *args)
 
 void glk_close() 
 {
-  if(lcd.framebuf != NULL) free(lcd.framebuf);
+  if(glk->framebuf != NULL) free(glk->framebuf);
 
-  lcd.framebuf = NULL;
+  glk->framebuf = NULL;
 
   glkclose( PortFD ) ;
 }
@@ -237,12 +259,12 @@ void glk_clear_forced()
 //  puts( "REALLY CLEARING the display" );
   clearcount = CLEARCOUNT ;
   glkputl( PortFD, GLKCommand, 0x58, EOF );
-  memset(screen_contents, ' ', lcd.wid*lcd.hgt);
+  memset(screen_contents, ' ', glk->wid*glk->hgt);
 }
 void glk_clear() 
 {
 //  puts( "glk_clear( )" );
-  memset(lcd.framebuf, ' ', lcd.wid*lcd.hgt);
+  memset(glk->framebuf, ' ', glk->wid*glk->hgt);
   if( --clearcount < 0 ) {
     glk_clear_forced( );
   };
@@ -255,7 +277,7 @@ void glk_clear()
 void glk_flush()
 {
 //   puts( "glk_flush( )" );
-   lcd.draw_frame(lcd.framebuf);
+   glk->draw_frame(glk->framebuf);
 }
 
 
@@ -269,11 +291,11 @@ void glk_string(int x, int y, char string[])
 
 //  printf( "glk_string( %d, %d, \"%s\" )\n", x, y, string );
 
-  if( x > lcd.wid || y > lcd.hgt ) {
+  if( x > glk->wid || y > glk->hgt ) {
      return ;
   };
 
-  for( p = string ; *p && x <= lcd.wid ; ++x, ++p ) {
+  for( p = string ; *p && x <= glk->wid ; ++x, ++p ) {
     glk_chr( x, y, *p );
   };
 
@@ -314,7 +336,7 @@ void glk_chr(int x, int y, char c)
     myc = 133 ;
   };
    
-  lcd.framebuf[(y*lcd.wid) + x] = myc;
+  glk->framebuf[(y*glk->wid) + x] = myc;
 
 }
 
@@ -340,18 +362,13 @@ int glk_contrast(int contrast)
 //
 void glk_backlight(int on)
 {
-  /*
-  if(on)
-  {
+  if(on) {
 //    printf("Backlight ON\n");
     glkputl( PortFD, GLKCommand, 0x42, 0, EOF );
-  }
-  else
-  {
+  } else {
 //    printf("Backlight OFF\n");
     glkputl( PortFD, GLKCommand, 0x46, EOF );
   }
-  */
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -414,7 +431,7 @@ void glk_init_num()
 void glk_num(int x, int num) 
 {
 //  printf("BigNum(%i, %i)\n", x, num);
-  lcd.framebuf[x-1] = num + '0' ;
+  glk->framebuf[x-1] = num + '0' ;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -430,13 +447,13 @@ void glk_set_char(int n, char *dat)
 //
 void glk_vbar(int x, int len) 
 {
-  int  y = lcd.hgt ;
+  int  y = glk->hgt ;
 
 //  printf( "glk_vbar( %d, %d )\n", x, len );
-  while( len > lcd.cellhgt ) {
+  while( len > glk->cellhgt ) {
     glk_chr( x, y, 255 );
     --y ;
-    len -= lcd.cellhgt ;
+    len -= glk->cellhgt ;
   };
 
   if( y >= 0 ) {
@@ -461,13 +478,13 @@ void glk_vbar(int x, int len)
 void glk_hbar(int x, int y, int len) 
 {
 //  printf( "glk_hbar( %d, %d, %d )\n", x, y, len );
-  while( len > lcd.cellwid ) {
+  while( len > glk->cellwid ) {
     glk_chr( x, y, 255 );
     ++x ;
-    len -= lcd.cellwid ;
+    len -= glk->cellwid ;
   };
 
-  if( x <= lcd.wid ) {
+  if( x <= glk->wid ) {
     int  lastc ;
     switch( len ) {
     case 0 :  lastc = ' ' ; break ;
@@ -512,11 +529,11 @@ void glk_icon(int which, char dest)
 
   old = CGRAM[(int)dest] ;
   CGRAM[(int)dest] = new ;
-  p = lcd.framebuf ;
+  p = glk->framebuf ;
   q = screen_contents ;
 
   /* Replace all old icons with new icon in new frame */
-  for( count = lcd.wid * lcd.hgt ; count ; --count ) {
+  for( count = glk->wid * glk->hgt ; count ; --count ) {
     if( *q == old ) {
 //      printf( "icon %d to %d at %d\n", old, new, q - screen_contents );
       *p = new ;
@@ -553,14 +570,14 @@ void glk_draw_frame(char *dat)
   int  xs ;
   char *  ps = NULL ;
 
-//  printf( "glk_draw_frame( %p )  lcd.framebuf = %p\n", dat, lcd.framebuf );
+//  printf( "glk_draw_frame( %p )  glk->framebuf = %p\n", dat, glk->framebuf );
 
-  p = lcd.framebuf ;
+  p = glk->framebuf ;
   q = screen_contents ;
 
-  for( y = 0 ; y < lcd.hgt ; ++y ) {
+  for( y = 0 ; y < glk->hgt ; ++y ) {
     xs = -1 ;  /* XStart not set */
-    for( x = 0 ; x < lcd.wid ; ++x ) {
+    for( x = 0 ; x < glk->wid ; ++x ) {
       if( *q == *p && xs >= 0 ) {
         /* Write accumulated string */
         glkputl( PortFD, GLKCommand, 0x79, xs*6+1, y*8, EOF );
@@ -572,13 +589,13 @@ void glk_draw_frame(char *dat)
         ps = p ;
         xs = x ;
       };
-      *q++ = *p++ ;  /* Update screen_contents from lcd.framebuf */
+      *q++ = *p++ ;  /* Update screen_contents from glk->framebuf */
     };
     if( xs >= 0 ) {
       /* Write accumulated line */
       glkputl( PortFD, GLKCommand, 0x79, xs*6+1, y*8, EOF );
-      glkputa( PortFD, lcd.wid - xs, ps );
-//      printf( "draw_frame: Writing at (%d,%d) for %d\n", xs, y, lcd.wid-xs );
+      glkputa( PortFD, glk->wid - xs, ps );
+//      printf( "draw_frame: Writing at (%d,%d) for %d\n", xs, y, glk->wid-xs );
     };
 
   };  /* For y */
@@ -623,7 +640,7 @@ char glk_getkey()
       msec_diff  = (now.tv_sec - lastkey.tv_sec) * 1000 ;
       msec_diff += (now.tv_usec - lastkey.tv_usec) / 1000 ;
 //      printf( "KEY %c down for %d msec\n", key, msec_diff );
-      if( msec_diff > 2000 ) {
+      if( msec_diff > 1000 ) {
         /* Generate repeat event */
         c = key | 0x20 ;  /* Upper case to lower case */
         ++lastkey.tv_sec ;  /* HACK HACK. repeat at 1 sec intervals */
@@ -635,18 +652,19 @@ char glk_getkey()
   /* Remap keys according to what LCDproc expects */
   switch( c ) {
   default :  break ;
-  case 'U' : c = 'A' ; break ;
-  case 'Q' : c = 'B' ; break ;
-  case 'P' : c = 'C' ; break ;
-  case 'K' : c = 'D' ; break ;
-  case 'V' : c = 'E' ; break ;
-  case 'L' : c = 'F' ; break ;
-  case 'u' : c = 'N' ; break ;
-  case 'q' : c = 'O' ; break ;
-  case 'p' : c = 'P' ; break ;
-  case 'k' : c = 'Q' ; break ;
-  case 'v' : c = 'R' ; break ;
-  case 'l' : c = 'S' ; break ;
+  case 'V' : c = 'A' ; break ; /* Hold/Select */
+  case 'P' : c = 'B' ; break ; /* Left  -- Minus */
+  case 'Q' : c = 'C' ; break ; /* Right -- Plus */
+  case 'L' : c = 'D' ; break ; /* Menu/Exit */
+  case 'U' : c = 'E' ; break ; /* Up */
+  case 'K' : c = 'F' ; break ; /* Down */
+
+  case 'v' : c = 'N' ; break ;
+  case 'p' : c = 'O' ; break ;
+  case 'q' : c = 'P' ; break ;
+  case 'l' : c = 'Q' ; break ;
+  case 'u' : c = 'R' ; break ;
+  case 'k' : c = 'S' ; break ;
   };
 
 //  if( c ) {

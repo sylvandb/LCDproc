@@ -58,7 +58,7 @@ sleep 1;        # Give server plenty of time to notice us...
 
 print $remote "hello\n";
 my $lcdconnect = <$remote>;
-#print $lcdconnect;
+print $lcdconnect;
 
 
 # Turn off blocking mode...
@@ -74,16 +74,16 @@ print $remote "widget_add metar temp string\n";
 print $remote "widget_add metar cloud string\n";
 print $remote "widget_add metar wind string\n";
 
-
-
+# set metar source
 my $ua = new LWP::UserAgent;
 
 my $req = new HTTP::Request GET =>
   "http://weather.noaa.gov/cgi-bin/mgetmetar.pl?cccc=$site_code";
 
+# fetch weather information
 while (1==1) {
 
-	my $lcdconnect = <$remote>;
+	print "Fetching weather information\n";
 	my $response = $ua->request($req);
 
 	if (!$response->is_success) {
@@ -91,7 +91,6 @@ while (1==1) {
 	    print $response->error_as_HTML;
 	    my $err_msg = $response->error_as_HTML;
 	    warn "$err_msg\n\n";
-	    die "$!";
 
 	} else {
 
@@ -119,21 +118,27 @@ while (1==1) {
 	    my $metartime = $m->TIME;
 	    my $c_dew = $m->C_DEW;
 	    my $f_temp = $m->F_TEMP;
-	    my $wind_dir_eng = $m->WIND_DIR_DEG;
-	    my $wind_mph = $m->WIND_MPH;
+	    my $wind_dir_eng = $m->WIND_DIR_ENG;
+	    my $wind_mph = int($m->WIND_MPH);
 	    my $sky = $m->SKY;
 	    my $time = localtime(time);
-	    print $remote "widget_set metar title {Weather LOWG " . $metartime . "}\n";
-	    print $remote "widget_set metar temp 1 2 {Temp " .$c_temp. "C (" .$c_dew. "C Dew)}\n";
-	    print $remote "widget_set metar wind 1 3 {Wind " .$wind_dir_eng. "G, " .$wind_mph. "mph}\n";
+	    print $remote "widget_set metar title {Weather $site_code $metartime}\n";
+	    print $remote "widget_set metar temp 1 2 {Temp ${c_temp}C (${c_dew}C Dew)}\n";
+	    print $remote "widget_set metar wind 1 3 {Wind ${wind_dir_eng}, ${wind_mph}mph}\n";
 	    print $remote "widget_set metar cloud 1 4 {Sky " . join(',', @{$m->{sky}}) . "}\n";
             # print "The temperature at $site_code is $c_temp C as of $time.\n";
 	    # print "The wind blows to $wind_dir_eng, speed $wind_mph mph\n";
-	$lcdconnect = <$remote>;
 
 	} # end else
-	sleep 600;
+	# eat all input from LCDd
+	while(defined($input = <$remote>)) {
+	    next  if ( $input =~ /^success$/ );
+	    #print $input;
+	}
+	print "Sleeping 15 minutes.\n";
+	sleep 900;
 }
+
 close($remote);
 exit;
 

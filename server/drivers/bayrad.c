@@ -10,13 +10,28 @@
 #include <termios.h>
 #include <fcntl.h>
 #include <string.h>
-#include <sys/errno.h>
-#include <sys/time.h>
+#include <errno.h>
 #include <sys/types.h>
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+#if TIME_WITH_SYS_TIME
+# include <sys/time.h>
+# include <time.h>
+#else
+# if HAVE_SYS_TIME_H
+#  include <sys/time.h>
+# else
+#  include <time.h>
+# endif
+#endif
+#ifdef SOLARIS
+#  include <strings.h>
+#endif
 #include "lcd.h"
 #include "bayrad.h"
 #include "drv_base.h"
-#include "../../shared/str.h"
+#include "shared/str.h"
 
 //////////////////////////////////////////////////////////////////////////
 ////////////////////// Base "class" to derive from ///////////////////////
@@ -393,15 +408,28 @@ int bayrad_init(struct lcd_logical_driver *driver, char *args)
 
    tcflush(fd, TCIOFLUSH);
 
-   // This is necessary in Linux, but does not exist in irix.
-   bzero(&portset, sizeof(portset));
-   portset.c_iflag = IGNPAR;
-   portset.c_oflag = 0;
-   portset.c_cflag = B9600|CS8|CREAD|CLOCAL;
-   portset.c_lflag = 0;
+   // We use RAW mode
+#ifdef HAVE_CFMAKERAW
+   // The easy way
+   cfmakeraw( &portset );
+#else
+   // The hard way
+   portset.c_iflag &= ~( IGNBRK | BRKINT | PARMRK | ISTRIP
+                         | INLCR | IGNCR | ICRNL | IXON );
+   portset.c_oflag &= ~OPOST;
+   portset.c_lflag &= ~( ECHO | ECHONL | ICANON | ISIG | IEXTEN );
+   portset.c_cflag &= ~( CSIZE | PARENB | CRTSCTS );
+   portset.c_cflag |= CS8 | CREAD | CLOCAL ;
+#endif
+
    portset.c_cc[VTIME] = 0;  // Don't use the timer, no workee
    portset.c_cc[VMIN] = 1;  // Need at least 1 char
 
+   // Set port speed
+   cfsetospeed(&portset, B9600);
+   cfsetispeed(&portset, B0);
+
+   // Do it...
    tcsetattr(fd, TCSANOW, &portset);
    tcflush(fd, TCIOFLUSH);
 
@@ -421,13 +449,13 @@ int bayrad_init(struct lcd_logical_driver *driver, char *args)
   driver->init_vbar = bayrad_init_vbar;
   driver->hbar = bayrad_hbar;
   driver->init_hbar = bayrad_init_hbar;
-  driver->num = NULL; //bayrad_num;
-  driver->init_num = NULL; //bayrad_init_num;
+  //driver->num = NULL; //bayrad_num;
+  //driver->init_num = NULL; //bayrad_init_num;
   driver->init = bayrad_init;
   driver->close = bayrad_close;
   driver->flush = bayrad_flush;
   driver->flush_box = bayrad_flush_box;
-  driver->contrast = NULL;                 
+  //driver->contrast = NULL;                 
   driver->backlight = bayrad_backlight;
   driver->set_char = bayrad_set_char;
   driver->icon = bayrad_icon;
@@ -446,10 +474,10 @@ int bayrad_init(struct lcd_logical_driver *driver, char *args)
 
 void bayrad_close() 
 {
-  if(lcd.framebuf != NULL) 
-    free(lcd.framebuf);
+  if(bayrad->framebuf != NULL) 
+    free(bayrad->framebuf);
 
-  lcd.framebuf = NULL;
+  bayrad->framebuf = NULL;
   write(fd, "\x8e\x00", 2);  // Backlight OFF
 
   //fprintf(stderr, "\nClosing BayRAD.\n");
@@ -462,7 +490,7 @@ void bayrad_close()
 //
 void bayrad_clear() 
 {
-  memset(lcd.framebuf, ' ', lcd.wid*lcd.hgt);
+  memset(bayrad->framebuf, ' ', bayrad->wid*bayrad->hgt);
   
 }
 
@@ -476,9 +504,9 @@ void bayrad_flush()
   //fprintf(stderr, "\nBayRAD flush"); 
 
   write(fd, "\x80\x1e", 2);  //sync, home
-  write(fd, lcd.framebuf, 20);
+  write(fd, bayrad->framebuf, 20);
   write(fd, "\x1e\x0a", 2);  //home, LF
-  write(fd, lcd.framebuf+20, 20);
+  write(fd, bayrad->framebuf+20, 20);
 
   return;
 }
@@ -500,7 +528,7 @@ void bayrad_string(int x, int y, char string[])
   for(i=0; string[i]; i++)
   {
      // Check for buffer overflows...
-     if((y*lcd.wid) + x + i  >  (lcd.wid*lcd.hgt)) 
+     if((y*bayrad->wid) + x + i  >  (bayrad->wid*bayrad->hgt)) 
        break;
 
      c = (unsigned char) string[i];
@@ -517,7 +545,7 @@ void bayrad_string(int x, int y, char string[])
        c += 0x98;   /* as 0x07 makes a beep instead of printing a character */
 
 
-     lcd.framebuf[(y*lcd.wid) + x + i] = c;
+     bayrad->framebuf[(y*bayrad->wid) + x + i] = c;
   }
 }
 
@@ -543,7 +571,7 @@ void bayrad_chr(int x, int y, char c)
 
   /* No shifting the custom chars here, so bayrad_chr() can beep */
 
-  lcd.framebuf[(y*lcd.wid) + x] = ch;
+  bayrad->framebuf[(y*bayrad->wid) + x] = ch;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -641,16 +669,16 @@ void bayrad_set_char(int n, char *dat)
   n = 0x40 + (n * 8);  /* Set n to the proper location in CG RAM */
 
   /* Set the LCD to accept data for rewrite-able char n */
-  sprintf(out, "\x88%c", n);
+  snprintf(out, sizeof(out), "\x88%c", n);
   write(fd, out, 2);
   
-  for(row=0; row<lcd.cellhgt; row++)
+  for(row=0; row<bayrad->cellhgt; row++)
   {
     letter = 0;
-    for(col=0; col<lcd.cellwid; col++)
+    for(col=0; col<bayrad->cellwid; col++)
     {
       letter <<= 1;
-      letter |= (dat[(row*lcd.cellwid) + col] > 0);
+      letter |= (dat[(row*bayrad->cellwid) + col] > 0);
     }
     write(fd, &letter, 1);
   }
@@ -670,17 +698,17 @@ void bayrad_vbar(int x, int len)
 
    //fprintf(stderr, "\nVbar at %i, length %i", x, len);
 
-   if(len >= lcd.cellhgt)
+   if(len >= bayrad->cellhgt)
      {
        bayrad_chr(x, y, 0xFF);
-       len -= lcd.cellhgt;
+       len -= bayrad->cellhgt;
        y = 1;
      }
    
    if(!len)
      return;
    
-   if(len > lcd.cellhgt)
+   if(len > bayrad->cellhgt)
      {
        bayrad_chr(x, y, '^');  /* Show we've gone off the chart */
        return;
@@ -703,16 +731,16 @@ void bayrad_hbar(int x, int y, int len)
 
   //fprintf(stderr, "\nHbar at %i,%i; length %i", x, y, len);
 
-  while((x <= lcd.wid) && (len > 0))
+  while((x <= bayrad->wid) && (len > 0))
   {
-    if(len < lcd.cellwid)
+    if(len < bayrad->cellwid)
       {
 	bayrad_chr(x, y, 0x98 + len);
 	break;
       }
 
     bayrad_chr(x, y, 0xFF);
-    len -= lcd.cellwid;
+    len -= bayrad->cellwid;
     x++;
   }
  
@@ -755,9 +783,9 @@ void bayrad_draw_frame(char *dat)
   //fprintf(stderr, "\nBayRAD draw frame");
 
   write(fd, "\x80\x1e", 2);  // NOP, home
-  write(fd, lcd.framebuf, 20);
+  write(fd, bayrad->framebuf, 20);
   write(fd, "\n", 1);
-  write(fd, lcd.framebuf+20, 20);  
+  write(fd, bayrad->framebuf+20, 20);  
 
 }
 

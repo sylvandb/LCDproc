@@ -13,6 +13,9 @@
 #include <stdarg.h>
 #include <sys/poll.h>
 #include "glkproto.h"
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #define INLINE  inline
 #undef MANUAL_FLOWCONTROL
@@ -42,13 +45,13 @@ GLKDisplay *
    struct termios  new ;
    GLKDisplay *  retval ;
 
-   if( name == NULL || (speed & CBAUD) == 0 ) {
+   if( name == NULL || speed == 0 ) {
       /* Invalid arguments */
       errno = EINVAL ;
       return( NULL );
    };
 
-   fd = open( name, O_RDWR | O_NOCTTY | O_SYNC );
+   fd = open( name, O_RDWR | O_NOCTTY );
    if( fd < 0 ) {
       return( NULL );
    };
@@ -73,17 +76,28 @@ GLKDisplay *
    retval->flow = GLKFLOW_OK ;
 
    /* Make new settings */
-   /* We use RAW mode, and select two stop bits
-    *   to slow things down 10%.  Therefore, we IGNORE
-    *   framing errors incase the module transmits back
-    *   to back with only one stop bit.
-    */
-   cfmakeraw( &new );  /* Sets CS8 */
-   new.c_iflag |= IGNPAR ;  /* Ignore framing/parity errors */
-   new.c_cflag &= ~(CBAUD | CRTSCTS ) ;
-   new.c_cflag |= speed | CREAD | CLOCAL | CSTOPB ;
+
+   /* We use RAW mode */
+#ifdef HAVE_CFMAKERAW
+   /* The easy way */
+   cfmakeraw( &new );
+#else
+   /* The hard way */
+   new.c_iflag &= ~( IGNBRK | BRKINT | PARMRK | ISTRIP
+                     | INLCR | IGNCR | ICRNL | IXON );
+   new.c_oflag &= ~OPOST;
+   new.c_lflag &= ~( ECHO | ECHONL | ICANON | ISIG | IEXTEN );
+   new.c_cflag &= ~( CSIZE | PARENB | CRTSCTS );
+   new.c_cflag |= CS8 | CREAD | CLOCAL ;
+#endif
+
+   /* Set default MIN and TIMEOUT values */
    new.c_cc[VMIN] = 0 ;
    new.c_cc[VTIME] = GLK_TIMEOUT ;
+
+   /* Set the out and in speeds */
+   cfsetospeed( &new, speed );
+   cfsetispeed( &new, B0 );  /* Input equals output speed */
 
    /* Configure the port */
    tcflush( fd, TCIOFLUSH );

@@ -1,3 +1,19 @@
+/*
+ *
+ * Chris Debenham - eSun Systems Engineer <chris.debenham@aus.sun.com>
+ *
+ * Heres a bit more info on the display.
+ * It is the LB216 and is made by R.T.N. Australia
+ * The web page for it is http://www.nollet.com.au/
+ * It is a serial 16x2 LCD with software controllable backlight.
+ * They also make 40x4 displays (which I'll be getting one of soon :-) )
+ * 3 wire connection (5V,0V and serial), 2400 or 9600 bps.
+ * 8 custom characters
+ * 40*83.5MM size
+ * made in australia :-)
+ *
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -5,18 +21,23 @@
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
-#include <ncurses.h>
 
-#include "../../shared/str.h"
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
 
+#ifdef HAVE_NCURSES_H
+# include <ncurses.h>
+#else
+# include <curses.h>
+#endif
+
+#include "shared/str.h"
+#include "shared/debug.h"
 #include "lcd.h"
 #include "lb216.h"
 #include "drv_base.h"
-
-#include "../render.h"
-
-#include "../../shared/debug.h"
-#include "../../config.h"
+#include "render.h"
 
 static int custom=0;
 typedef enum {
@@ -141,14 +162,26 @@ int LB216_init(lcd_logical_driver *driver, char *args)
    }
    //else fprintf(stderr, "LB216_init: opened device %s\n", device);
    tcgetattr(fd, &portset);
-   // This is necessary in Linux, but does not exist in irix or solaris.
-#ifndef IRIX
-#ifndef SOLARIS
-   cfmakeraw(&portset);
+
+   // We use RAW mode
+#ifdef HAVE_CFMAKERAW
+   // The easy way
+   cfmakeraw( &portset );
+#else
+   // The hard way
+   portset.c_iflag &= ~( IGNBRK | BRKINT | PARMRK | ISTRIP
+                         | INLCR | IGNCR | ICRNL | IXON );
+   portset.c_oflag &= ~OPOST;
+   portset.c_lflag &= ~( ECHO | ECHONL | ICANON | ISIG | IEXTEN );
+   portset.c_cflag &= ~( CSIZE | PARENB | CRTSCTS );
+   portset.c_cflag |= CS8 | CREAD | CLOCAL ;
 #endif
-#endif
-   cfsetospeed(&portset, speed);
-   cfsetispeed(&portset, speed);
+
+   // Set port speed
+   cfsetospeed (&portset, speed);
+   cfsetispeed (&portset, B0);
+
+   // Do it...
    tcsetattr(fd, TCSANOW, &portset);
    
 
@@ -163,39 +196,30 @@ int LB216_init(lcd_logical_driver *driver, char *args)
    LB216_hidecursor();
    LB216_backlight(backlight_brightness);
 
-   
-   if(!driver->framebuf)
-   {
-      fprintf(stderr, "LB216_init: No frame buffer.\n");
-      driver->close();
-      return -1;
-   }
-
-
    // Set the functions the driver supports...
 
-   driver->clear =      NULL;
+   driver->clear =      LB216_clear;
    driver->string =     LB216_string;
    driver->chr =        LB216_chr;
    driver->vbar =       LB216_vbar;
    driver->init_vbar =  LB216_init_vbar;
    driver->hbar =       LB216_hbar;
    driver->init_hbar =  LB216_init_hbar;
-   driver->num =        NULL;
-   driver->init_num =   NULL;
+   //driver->num =        NULL;
+   //driver->init_num =   NULL;
 
    driver->init =       LB216_init;
    driver->close =      LB216_close;
    driver->flush =      LB216_flush;
-   driver->flush_box =  NULL;
-   driver->contrast =   NULL;
+   //driver->flush_box =  NULL;
+   //driver->contrast =   NULL;
    driver->backlight =  LB216_backlight;
    driver->set_char =   LB216_set_char;
    driver->icon =       LB216_icon;
    driver->draw_frame = LB216_draw_frame;
 
-   lcd.cellwid = 5;
-   lcd.cellhgt = 8;
+   LB216->cellwid = 5;
+   LB216->cellhgt = 8;
 
    debug("LB216: foo!\n");
    
@@ -216,10 +240,19 @@ void LB216_close()
   LB216->framebuf = NULL;
 }
 
+/////////////////////////////////////////////////////////////////
+// Clears the LCD screen
+//
+void
+LB216_clear ()
+{
+	memset (LB216->framebuf, ' ', LB216->wid * LB216->hgt);
+
+}
 
 void LB216_flush()
 {
-   LB216_draw_frame(lcd.framebuf);
+   LB216_draw_frame(LB216->framebuf);
 }
 
 
@@ -234,9 +267,9 @@ void LB216_chr(int x, int y, char c)
  // x--;
   
   //if(c < 32  &&  c >= 0) c += 128;
-//  lcd.framebuf[(y*lcd.wid) + x] = c;
+//  LB216->framebuf[(y*LB216->wid) + x] = c;
 	char chr[1];
-	sprintf(chr, "%c", c);
+	snprintf (chr, sizeof(chr), "%c", c);
 	LB216_string (x, y, chr);
 }
 
@@ -250,11 +283,11 @@ void LB216_backlight(int on)
   char out[4];
   if(on)
   {
-    sprintf(out, "%c%c", 254, 253);
+    snprintf (out, sizeof(out), "%c%c", 254, 253);
   }
   else
   {
-    sprintf(out, "%c%c", 254, 252);
+    snprintf (out, sizeof(out), "%c%c", 254, 252);
   }
     write(fd, out, 2);
 }
@@ -266,7 +299,7 @@ void LB216_backlight(int on)
 static void LB216_hidecursor()
 {
   char out[4];
-  sprintf(out, "%c%c", 254,12);
+  snprintf (out, sizeof(out), "%c%c", 254,12);
   write(fd, out, 2);
 }
 
@@ -276,7 +309,7 @@ static void LB216_hidecursor()
 static void LB216_reboot()
 {
   char out[4];
-  sprintf(out, "%c%c", 254,1);
+  snprintf (out, sizeof(out), "%c%c", 254,1);
   write(fd, out, 2);
 }
 
@@ -284,7 +317,7 @@ static void LB216_reboot()
 /////////////////////////////////////////////////////////////
 // Blasts a single frame onscreen, to the lcd...
 //
-// Input is a character array, sized lcd.wid*lcd.hgt
+// Input is a character array, sized LB216->wid*LB216->hgt
 //
 void LB216_draw_frame(char *dat)
 {
@@ -293,17 +326,18 @@ void LB216_draw_frame(char *dat)
   
   if(!dat) return;
 
-  sprintf(out, "%c%c", 254,80);
+  snprintf (out, sizeof(out), "%c%c", 254,80);
   write(fd, out, 2);
 
-
-  for(j=0; j<lcd.hgt; j++) {
-    sprintf(out,"%c%c",254,128+(64*(j)));
-//	printf ("|\n|");
+  for(j=0; j<LB216->hgt; j++) {
+	if (j>=2) {
+    	snprintf (out, sizeof(out),"%c%c",254,148+(64*(j-2)));
+	} else {
+    	snprintf (out, sizeof(out),"%c%c",254,128+(64*(j)));
+	}
     write(fd, out, 2);
-    for(i=0; i<lcd.wid; i++) {
-      sprintf(out,"%c",dat[i+(j*lcd.wid)]);
-//		printf("%d,",out[0]);
+    for(i=0; i<LB216->wid; i++) {
+      snprintf (out, sizeof(out),"%c",dat[i+(j*LB216->wid)]);
       write(fd, out, 1);
     }
   }
@@ -323,13 +357,13 @@ void LB216_string (int x, int y, char string[])
       {
          case '\254': c = '#'; break;
       }
-      lcd.framebuf[(y*lcd.wid) + x+i] = c;
+      LB216->framebuf[(y*LB216->wid) + x+i] = c;
    }
 
 }
 
 /////////////////////////////////////////////////////////////////
-// Sets up for vertical bars.  Call before lcd.vbar()
+// Sets up for vertical bars.  Call before LB216->vbar()
 //
 void LB216_init_vbar() 
 {
@@ -492,12 +526,12 @@ void LB216_vbar(int x, int len)
   
 
   int y;
-  for(y=lcd.hgt; y > 0 && len>0; y--)
+  for(y=LB216->hgt; y > 0 && len>0; y--)
     {
-      if(len >= lcd.cellhgt) LB216_chr(x, y, 255);
+      if(len >= LB216->cellhgt) LB216_chr(x, y, 255);
       else LB216_chr(x, y, map[len]);
 
-      len -= lcd.cellhgt;
+      len -= LB216->cellhgt;
     }
   
 }
@@ -509,13 +543,13 @@ void LB216_hbar(int x, int y, int len)
 {
   char map[7] = { 32, 1, 2, 3, 4, 5 };
 
-  for(; x<=lcd.wid && len>0; x++)
+  for(; x<=LB216->wid && len>0; x++)
     {
-      if(len >= lcd.cellwid) LB216_chr(x,y,map[5]);
+      if(len >= LB216->cellwid) LB216_chr(x,y,map[5]);
       else LB216_chr(x, y, map[len]);
       
 	 //printf ("%d,",len);
-      len -= lcd.cellwid;
+      len -= LB216->cellwid;
       
     }
 //	printf ("\n");
@@ -540,18 +574,18 @@ void LB216_set_char(int n, char *dat)
   n=64+(8*n);
   if(!dat) return;
 
-  sprintf(out, "%c%c", 254, n);
+  snprintf (out, sizeof(out), "%c%c", 254, n);
   write(fd, out, 2);
 
-  for(row=0; row<lcd.cellhgt; row++)
+  for(row=0; row<LB216->cellhgt; row++)
   {
     letter = 1;
-    for(col=0; col<lcd.cellwid; col++)
+    for(col=0; col<LB216->cellwid; col++)
     {
       letter <<= 1;
-      letter |= (dat[(row*lcd.cellwid) + col] > 0);
+      letter |= (dat[(row*LB216->cellwid) + col] > 0);
     }
-	sprintf(out,"%c",letter);
+	snprintf (out, sizeof(out),"%c",letter);
     write(fd, out, 1);
   }
 }
