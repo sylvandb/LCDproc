@@ -144,7 +144,7 @@ int MtxOrb_init(lcd_logical_driver *driver, char *args)
       {
 	 printf("LCDproc Matrix-Orbital LCD driver\n"
 		"\t-d\t--device\tSelect the output device to use [/dev/lcd]\n"
-		"\t-t\t--type\t\tSelect the LCD type (size) [20x4]\n"
+//		"\t-t\t--type\t\tSelect the LCD type (size) [20x4]\n"
 		"\t-c\t--contrast\tSet the initial contrast [140]\n"
 		"\t-s\t--speed\t\tSet the communication speed [19200]\n"
 		"\t-h\t--help\t\tShow this help information\n");
@@ -988,60 +988,4 @@ MtxOrb_set_char(car, &all_bar[type][0]);
 void MtxOrb_init_all(int type) 
 {
 }
-
-// TODO: Remove this code wich was use for developpement.
-// PS: That was the code to define unidirectionnal [h|v]bar.
-/*
-  if(type==hbar){
-    if(custom!=hbar) {
-      MtxOrb_set_known_char(1, barr1);
-      MtxOrb_set_known_char(2, barr2);
-      MtxOrb_set_known_char(3, barr3);
-      MtxOrb_set_known_char(4, barr4);
-      custom=hbar;
-    }
-  }
-
-  if(type==vbar){
-    if(custom!=vbar) {
-      MtxOrb_set_known_char(1, baru1);
-      MtxOrb_set_known_char(2, baru2);
-      MtxOrb_set_known_char(3, baru3);
-      MtxOrb_set_known_char(4, baru4);
-      MtxOrb_set_known_char(5, baru5);
-      MtxOrb_set_known_char(6, baru6);
-      MtxOrb_set_known_char(7, baru7);
-      custom=vbar;
-    }
-  }
-*/
-
-
-// TODO: Remove this code wich was use for developpement.
-// PS: It was a good idea, but not working (fixing take to much time).
-/*
-void MtxOrb_icon(int which, char dest)
-{
-  if(custom==bign) custom=beat;
-  MtxOrb_set_known_char(dest, which+21);
-}
-*/
-
-
-// TODO: Remove this code wich was use for developpement.
-// PS: Temporary code used durring developpement of dynamic bar.
-/*
-    if(type==barr1)return(1);
-    if(type==barr2)return(2);
-    if(type==barr3)return(3);
-    if(type==barr4)return(4);
-    if(type==baru1)return(1);
-    if(type==baru2)return(2);
-    if(type==baru3)return(3);
-    if(type==baru4)return(4);
-    if(type==baru5)return(5);
-    if(type==baru6)return(6);
-    if(type==baru7)return(7);
-*/
-
 

@@ -6,7 +6,11 @@
 #include <string.h>
 #include <sys/errno.h>
 
-#include "LL.h"
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#include "../../shared/LL.h"
 
 #include "lcd.h"
 
@@ -48,6 +52,10 @@
 #include "irmanin.h"
 #endif
 
+#ifdef LIRCIN_DRV
+#include "lircin.h"
+#endif
+
 // TODO: Make a Windows server, and clients...?
 
 
@@ -82,6 +90,9 @@ lcd_physical_driver drivers[] =
 #endif
 #ifdef IRMANIN_DRV
   { "irmanin",   irmanin_init, },
+#endif
+#ifdef LIRCIN_DRV
+  { "lircin",	lircin_init, },
 #endif
   { NULL,       NULL, },
   

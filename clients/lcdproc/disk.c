@@ -4,16 +4,27 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#ifdef LINUX
-#include <sys/vfs.h>
-#else
-#ifdef xBSD
-#include <sys/param.h>
-#include <sys/mount.h>
-#else
-#include <sys/statfs.h>
+#ifdef HAVE_CONFIG_H
+#include "config.h"
 #endif
 
+#ifdef HAVE_SYS_PARAM_H
+#include <sys/param.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_SYS_MOUNT_H
+#include <sys/mount.h>
+#endif
+#ifdef HAVE_SYS_VFS_H 
+#include <sys/vfs.h>
+#endif
+#ifdef HAVE_SYS_STATVFS_H
+#include <sys/statvfs.h>
+#endif
+#ifdef HAVE_SYS_STATFS_H
+#include <sys/statfs.h>
 #endif
 
 
@@ -36,7 +47,11 @@ typedef struct mounts
 
 static int get_fs(mounts fs[])
 {
+#ifdef STAT_STATVFS
+  struct statvfs fsinfo;
+#else
   struct statfs fsinfo;
+#endif
   char line[256];
   int x = 0, y;
   
@@ -64,11 +79,16 @@ static int get_fs(mounts fs[])
 #endif
         ) 
      {
-#if LINUX || BSD
+#ifdef STAT_STATVFS
+        y = statvfs(fs[x].mpoint, &fsinfo);
+#elif STAT_STATFS2_BSIZE 
         y = statfs(fs[x].mpoint, &fsinfo); 
-#else
+#elif STAT_STATFS4
         y = statfs(fs[x].mpoint, &fsinfo, sizeof(fsinfo), 0); 
+#else
+#error "statfs for this system noy yet supported"
 #endif
+	
         fs[x].blocks = fsinfo.f_blocks;
         if(fs[x].blocks > 0)
         {
@@ -84,57 +104,6 @@ static int get_fs(mounts fs[])
   fclose(mtab_fd);
   return x;
 }
-
-#if 0
-static int get_fs(mounts fs[])
-{
-  struct statfs fsinfo;
-  char line[256];
-  int x = 0, y;
-  
-  mtab_fd = fopen("/etc/mtab", "r");
-
-  // Get rid of old, unmounted filesystems...
-  memset(fs, 0, sizeof(mounts)*256);
-  
-  while (x < 256)
-  {
-    if(fgets(line, 256, mtab_fd) == NULL)
-      {
-	fclose(mtab_fd);
-	return x;
-      }
-    
-    sscanf(line, "%s %s %s", fs[x].dev, fs[x].mpoint, fs[x].type);
-    
-    if(   strcmp(fs[x].type, "proc")
-#ifndef STAT_NFS
-       && strcmp(fs[x].type, "nfs")
-#endif
-#ifndef STAT_SMBFS
-       && strcmp(fs[x].type, "smbfs")
-#endif
-      ) 
-    {
-#ifdef LINUX
-      y = statfs(fs[x].mpoint, &fsinfo); 
-#else
-      y = statfs(fs[x].mpoint, &fsinfo, sizeof(fsinfo), 0); 
-#endif
-      fs[x].bsize = fsinfo.f_bsize; 
-      fs[x].blocks = fsinfo.f_blocks;
-      fs[x].bfree = fsinfo.f_bfree; 
-      fs[x].files = fsinfo.f_files;
-      fs[x].ffree = fsinfo.f_ffree; 
-      x++;
-    }
-  }
-
-  fclose(mtab_fd);
-  return x;
-}
-#endif
-
 
 int disk_init()
 {
@@ -182,7 +151,7 @@ int disk_screen(int rep, int display)
       first = 0;
 
       sock_send_string(sock, "screen_add D\n");
-      sprintf(buffer, "screen_set D name {Disk Use: %s}\n", host);
+      sprintf(buffer, "screen_set D -name {Disk Use: %s}\n", host);
       sock_send_string(sock, buffer);
       sock_send_string(sock, "widget_add D title title\n");
       sprintf(buffer, "widget_set D title {DISKS: %s}\n", host);

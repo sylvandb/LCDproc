@@ -24,6 +24,7 @@
 #include "batt.h"
 #include "chrono.h"
 #include "cpu.h"
+#include "cpu_smp.h"
 #include "disk.h"
 #include "load.h"
 #include "mem.h"
@@ -113,6 +114,10 @@ int mode_init(mode *sequence)
 	 case 'a':
 	 case 'A': // credit_screen
 	    break;
+	 case 'p':
+	 case 'P': // cpu_smp_screen
+            cpu_smp_init ();
+	    break;
 	 default: break;
       }
    }
@@ -130,7 +135,7 @@ void mode_close()
    disk_close();
    load_close();
    mem_close();
-  
+   cpu_smp_close ();
 }
 
 
@@ -167,6 +172,8 @@ int update_screen(mode *m, int display)
 	 case 'B': status = battery_screen(m->timer, display); break;
 	 case 'a':
 	 case 'A': status = credit_screen(m->timer, display); break;
+         case 'p':
+         case 'P': status = cpu_smp_screen (m->timer, display); break;
 	 default: break;
       }
       /* Debugging tool...
@@ -249,7 +256,7 @@ int credit_screen(int rep, int display)
       
       sock_send_string(sock, "screen_add A\n");
       sock_send_string(sock,
-		       "screen_set A name {Credits for LCDproc}\n");
+		       "screen_set A -name {Credits for LCDproc}\n");
       sock_send_string(sock, "widget_add A title title\n");
       sprintf(tmp, "widget_set A title {LCDPROC %s}\n", version);
       sock_send_string(sock, tmp);
