@@ -80,7 +80,7 @@
 
 #undef API_VERSION
 
-#undef SLI_DRV
+#undef WIRZSLI_DRV
 
 #undef SOLARIS
 
