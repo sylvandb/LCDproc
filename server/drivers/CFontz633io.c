@@ -18,6 +18,8 @@
 #include <unistd.h>
 #include <stdio.h>
 
+#include "shared/report.h"
+
 /*#include <errno.h>*/
 /*extern int errono;*/
 /*#include <string.h>*/
@@ -54,7 +56,7 @@ void EmptyKeyRing(void)
 int AddKeyToKeyRing(unsigned char key) {
   int oldhead;
 
-  printf("We have key: %d\n", key);
+/*  printf("We have key: %d\n", key); */
 
   oldhead=KeyHead;
   KeyHead++;
@@ -81,7 +83,6 @@ unsigned char GetKeyFromKeyRing(void) {
 
   return retval;
   }
-
 
 
 /*
@@ -177,10 +178,7 @@ int get_crc(char *bufptr, int len, int seed)
 	    (newCrc >> 8) ^ crcLookupTable[(newCrc ^ *bufptr++) & 0xff];
 
     /*
-     * Make this crc match the one's complement that is sent in the 
-     */
-    /*
-     * packet. 
+     * Make this crc match the one's complement that is sent in the packet. 
      */
     return (~newCrc);
 }
@@ -193,7 +191,7 @@ SendByte(int fd, unsigned char datum)
     bytes_written = 0;
     bytes_written = write(fd, &datum, 1);
     if (bytes_written != 1) {
-	printf("SendByte(): only %d of %d bytes sent.", bytes_written, 1);
+        report(RPT_WARNING, "CFontz633io: SendByte byte not send.");
     }
 
     return;
@@ -352,7 +350,7 @@ unsigned char DiscardGetByte(void)
       ReceiveBufferTail=0;
     }
   
-  printf("Discarded : /%02x/\n", return_byte);
+  debug (RPT_WARNING, "CFontz633io: Byte discarded in resync 0x%02x\n", return_byte);
 
   return(return_byte);
   }
@@ -462,7 +460,7 @@ unsigned char check_for_packet(int fd, unsigned char expected_length)
     /* Throw out one byte of garbage. Next pass through should re-sync. */
     DiscardGetByte();
     tossed++;
-    printf("###: Unknown command.\n");
+    report (RPT_WARNING, "CFontz633io: Received unknown command: %d.\n", incoming_command.command);
     return(TRY_AGAIN);
     }
   /* There is a valid command byte. Get the data_length. */
@@ -472,7 +470,7 @@ unsigned char check_for_packet(int fd, unsigned char expected_length)
     //Throw out one byte of garbage. Next pass through should re-sync.
     DiscardGetByte();
     tossed++;
-    printf("###: Too long packet: %d.\n", incoming_command.data_length);
+    report (RPT_WARNING, "CFontz633io: Received too long packet: %d.\n", incoming_command.data_length);
     return(TRY_AGAIN);
     }
 
@@ -481,7 +479,7 @@ unsigned char check_for_packet(int fd, unsigned char expected_length)
   if((int)PeekBytesAvail()<(incoming_command.data_length+2)) {
     //It looked like a valid start of a packet, but it does not look
     //like the complete packet has been received yet.
-          printf("Not enough read to check the complete message.\n"); 
+  debug (RPT_WARNING, "Not enough read to check the complete message.\n"); 
 	  return(GIVE_UP); /* Let's not return until more byte are available */
 	  }
 
@@ -515,8 +513,7 @@ unsigned char check_for_packet(int fd, unsigned char expected_length)
    */
   tossed++;
   DiscardGetByte();
-  printf("###: Wrong CheckSum. computed/real %04x:%04x \n",
-  		testcrc, incoming_command.CRC.as_word);
+  report (RPT_WARNING, "CFontz633io: Wrong CheckSum. computed/real %04x!=%04x \n", testcrc, incoming_command.CRC.as_word);
   return(TRY_AGAIN);
   }
 //============================================================================
@@ -562,5 +559,7 @@ void print_packet(COMMAND_PACKET *packet)
   
   printf(" ] %02x %02x .\n", packet->CRC.as_bytes[0], packet->CRC.as_bytes[1]);
 }
+
+
 //============================================================================
 

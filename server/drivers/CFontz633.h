@@ -3,33 +3,39 @@
 
 #include "lcd.h"
 
-#define DEFAULT_CELL_WIDTH 6
-#define DEFAULT_CELL_HEIGHT 8
-#define DEFAULT_CONTRAST 560
-#define DEFAULT_DEVICE "/dev/lcd"
-#define DEFAULT_SPEED B19200
-#define DEFAULT_BRIGHTNESS 100
-#define DEFAULT_OFFBRIGHTNESS 0
-#define DEFAULT_SIZE "16x2"
+extern lcd_logical_driver *CFontz633;
 
-MODULE_EXPORT int  CFontz633_init (Driver * drvthis, char *device);
-MODULE_EXPORT void CFontz633_close (Driver * drvthis);
-MODULE_EXPORT int  CFontz633_width (Driver * drvthis);
-MODULE_EXPORT int  CFontz633_height (Driver * drvthis);
-MODULE_EXPORT void CFontz633_clear (Driver * drvthis);
-MODULE_EXPORT void CFontz633_flush (Driver * drvthis);
-MODULE_EXPORT void CFontz633_string (Driver * drvthis, int x, int y, char string[]);
-MODULE_EXPORT void CFontz633_chr (Driver * drvthis, int x, int y, char c);
+#define CFONTZ633_DEF_CELL_WIDTH 6
+#define CFONTZ633_DEF_CELL_WIDTH 6
+#define CFONTZ633_DEF_CELL_WIDTH 6
+#define CFONTZ633_DEF_CELL_HEIGHT 8
+#define CFONTZ633_DEF_CONTRAST 16
+#define CFONTZ633_DEF_DEVICE "/dev/lcd"
+#define CFONTZ633_DEF_SPEED B19200
+#define CFONTZ633_DEF_BRIGHTNESS 100
+#define CFONTZ633_DEF_OFFBRIGHTNESS 0
+#define CFONTZ633_DEF_SIZE "16x2"
 
-MODULE_EXPORT void CFontz633_vbar (Driver * drvthis, int x, int y, int len, int promille, int options);
-MODULE_EXPORT void CFontz633_hbar (Driver * drvthis, int x, int y, int len, int promille, int options);
-MODULE_EXPORT void CFontz633_num (Driver * drvthis, int x, int num);
-MODULE_EXPORT int  CFontz633_icon(Driver * drvthis, int x, int y, int icon);
+int  CFontz633_init (lcd_logical_driver * driver, char *device);
+void CFontz633_close ();
+void CFontz633_flush ();
+void CFontz633_flush_box (int lft, int top, int rgt, int bot);
+void CFontz633_chr (int x, int y, char c);
+int  CFontz633_contrast (int contrast);
+void CFontz633_backlight (int on);
+void CFontz633_vbar (int x, int len);
+void CFontz633_hbar (int x, int y, int len);
+void CFontz633_init_num ();
+void CFontz633_num (int x, int num);
+void CFontz633_set_char (int n, char *dat);
+void CFontz633_draw_frame(char *dat);
+int  CFontz633_width ();
+int  CFontz633_height ();
+void CFontz633_clear ();
+void CFontz633_string (int x, int y, char string[]);
 
-MODULE_EXPORT void CFontz633_set_char (Driver * drvthis, int n, char *dat);
 
-MODULE_EXPORT int  CFontz633_get_contrast (Driver * drvthis);
-MODULE_EXPORT void CFontz633_set_contrast (Driver * drvthis, int contrast);
-MODULE_EXPORT void CFontz633_backlight (Driver * drvthis, int on);
+
 
 #endif
+
