@@ -59,6 +59,9 @@
 #define IS_VFD_DISPLAY	(MtxOrb_type == MTXORB_VFD)
 #define IS_VKD_DISPLAY	(MtxOrb_type == MTXORB_VKD)
 
+#define NUM_CUSTOM_CHARS 8
+#define CUSTOM_NOT_FOUND (NUM_CUSTOM_CHARS)
+
 #define NotEnoughArgs (i + 1 > argc)
 
 /* NOTE: This does not appear to make use of the
@@ -67,12 +70,13 @@
  * RESP: Because software emulated hbar/vbar permit simultaneous use.
  */
 
-/* TODO: Remove this custom_type if not in use anymore.*/
 typedef enum {
-	bar = 2,
-	bign = 4,
-	beat = 8
+	normal,
+	hbar,
+	vbar,
+	bign
 } custom_type;
+#define KNOWN_CHARS 26
 
 #define DIRTY_CHAR 254
 #define START_ICON 22
@@ -106,25 +110,43 @@ typedef enum {
 	barw = 32
 } bar_type;
 
+#define IS_BARU(x) (((x) == baru1) || ((x) == baru2) || ((x) == baru3) || \
+		            ((x) == baru4) || ((x) == baru5) || ((x) == baru6) || \
+					((x) == baru7) || ((x) == barb))
+#define IS_BARD(x) (((x) == bard1) || ((x) == bard2) || ((x) == bard3) || \
+		            ((x) == bard4) || ((x) == bard5) || ((x) == bard6) || \
+					((x) == bard7) || ((x) == barb))
+#define IS_BARL(x) (((x) == barl1) || ((x) == barl2) || ((x) == barl3) || \
+					((x) == barl4))
+#define IS_BARR(x) (((x) == barr1) || ((x) == barr2) || ((x) == barr3) || \
+					((x) == barr4))
+
+
 static unsigned char *lcd_contains; // what we think is actually on the LCD
-static int custom = 0;
+static int custom = normal;
 static enum {MTXORB_LCD, MTXORB_LKD, MTXORB_VFD, MTXORB_VKD} MtxOrb_type;
 static int fd;
-static int clear = 1;
 static int backlightenabled = MTXORB_DEF_BACKLIGHT;
+static int uselinewrap = 1;
+static int linewrapenabled = MTXORB_DEF_LINEWRAP;
 
 static char pause_key = MTXORB_DEF_PAUSE_KEY, back_key = MTXORB_DEF_BACK_KEY;
 static char forward_key = MTXORB_DEF_FORWARD_KEY, main_menu_key = MTXORB_DEF_MAIN_MENU_KEY;
 static int keypad_test_mode = 0;
 static int barb_is_255 = 1;
 
-static int def[9] = { -1, -1, -1, -1, -1, -1, -1, -1, -1 };
-static int use[9] = { 1, 0, 0, 0, 0, 0, 0, 0, 0 };
+static int def[NUM_CUSTOM_CHARS] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+static int use[NUM_CUSTOM_CHARS];
+static int sent[NUM_CUSTOM_CHARS];
+static int defCount[KNOWN_CHARS];
+static void sendOutCustomChars(void);
 
 static void MtxOrb_linewrap (int on);
 static void MtxOrb_autoscroll (int on);
 static void MtxOrb_cursorblink (int on);
 static void MtxOrb_string (int x, int y, char *string);
+static void reassign(int pos);
+static int approx_match(int type);
 
 /* 
  * This does not belong to MtxOrb.h unless used externally
@@ -150,7 +172,7 @@ static void MtxOrb_draw_frame (char *dat);
 static char MtxOrb_getkey ();
 static char * MtxOrb_getinfo ();
 static void MtxOrb_heartbeat (int type);
-static int MtxOrb_ask_bar (int type);
+static int MtxOrb_ask_bar (int type, int priority);
 static void MtxOrb_set_known_char (int car, int type);
 /*
  * End of what was in MtxOrb.h
@@ -177,15 +199,26 @@ MtxOrb_clear_custom ()
 {
 	int pos;
 
-	for (pos = 0; pos < 9; pos++) {
-		def[pos] = -1;		/* Not in use.*/
-		use[pos] = 0;		/* Not in use.*/
+	/* The whole of the custom chars are being used (i.e. by bignum).
+	 * so reset custom char settings.
+	 */
+
+	for (pos = 0; pos < NUM_CUSTOM_CHARS; pos++) 
+	{
+		if (use[pos])
+		{
+			// If a character is in use since the last clear
+			// then reassign it (i.e. use an approx char for it)
+			reassign(pos);
 		}
+		def[pos] = -1;		/* Character is not defined.*/
+		use[pos] = 0;		/* Character is not in use.*/
+		sent[pos]=0;        
+	}
+
 }
 
-/* TODO:  Get rid of this variable? Probably not...*/
-lcd_logical_driver *MtxOrb;	/* set by MtxOrb_init(); doesn't seem to be used anywhere*/
-/* TODO:  Get the frame buffers working right*/
+lcd_logical_driver *MtxOrb;	/* set by MtxOrb_init() */
 
 /*********************************************************************
  * init() should set up any device-specific stuff, and
@@ -285,6 +318,14 @@ MtxOrb_init (lcd_logical_driver * driver, char *args)
 	}
 
 	barb_is_255 = config_get_bool( DriverName , "hasfullblock" , 0 , 1);
+
+
+	/* Get uselinewrap setting
+	 * This setting is used when the display doesn't support linewrap
+	 * or when the display size being used is smaller than the real
+	 * LCD size.
+	 */
+	uselinewrap = config_get_bool( DriverName , "uselinewrap" , 0 , 1);
 
 	/* Get display type */
 	type=config_get_string ( DriverName , "type" , 0 , MTXORB_DEF_TYPE);
@@ -451,8 +492,6 @@ MtxOrb_init (lcd_logical_driver * driver, char *args)
 #define ValidX(x) if ((x) > MtxOrb->wid) { (x) = MtxOrb->wid; } else (x) = (x) < 1 ? 1 : (x);
 #define ValidY(y) if ((y) > MtxOrb->hgt) { (y) = MtxOrb->hgt; } else (y) = (y) < 1 ? 1 : (y);
 
-/* TODO: Check this quick hack to detect clear of the screen. */
-
 /***************************************************************************
  * Clear: catch up when the screen get clear to be able to
  *  forget bar caracter not in use anymore and reuse the
@@ -461,16 +500,36 @@ MtxOrb_init (lcd_logical_driver * driver, char *args)
 static void
 MtxOrb_clear ()
 {
+	static int called=0;
+	int i;
+
 	if (MtxOrb->framebuf != NULL)
 		memset (MtxOrb->framebuf, ' ', (MtxOrb->wid * MtxOrb->hgt));
 
-	/* write(fd, "\x0FE" "X", 2); */ /* instant clear... */
-	/* Q: Why was this disabled? */
-	/* A: Because otherwise it is flashy not working...
-	 * We don't do thinks when ask, but when ask to flush.
-	 * We don't do thinks hardware ways but software ways. 
+	for (i=0; i<NUM_CUSTOM_CHARS; i++)
+	{
+		use[i]=0;
+	}
+
+	custom=normal; /* assume normal custom characters until bignum/vbar/hbar is
+					* used.
+					*/
+
+	/* Not the perfect place for this - but...
+	 * To avoid the defCount[]s overflowing and messing up the custom char
+	 * allocation scheme - we will clear them every now and then...
 	 */
-	clear = 1;
+	called++;
+	if (called>0x000FFFFF)
+	{
+		int i;
+		called=0;
+
+		for (i=0; i<NUM_CUSTOM_CHARS; i++)
+		{
+			defCount[i]=1;
+		}
+	}
 
 	debug(RPT_DEBUG, "MtxOrb: asked to clear screen");
 }
@@ -530,6 +589,8 @@ MtxOrb_flush_box (int lft, int top, int rgt, int bot)
     unsigned char *p, *q;
     
     debug(RPT_DEBUG, "MtxOrb: flush_box(%d,%d,%d,%d)", lft, top, rgt, bot);
+
+	sendOutCustomChars();
 
     // We can't just write it out because it could contain
     // the dirty character.
@@ -688,8 +749,9 @@ MtxOrb_output (int on)
 
 	if (IS_LCD_DISPLAY || IS_VFD_DISPLAY) {
 		/* LCD and VFD displays only have one output port */
-		(on) ?
-			write (fd, "\x0FEW", 2) :
+		if (on)
+			write (fd, "\x0FEW", 2);
+		else
 			write (fd, "\x0FEV", 2);
 	} else {
 		int i;
@@ -700,8 +762,9 @@ MtxOrb_output (int on)
 		 */
 
 		for(i = 0; i < 6; i++) {
-			(on & (1 << i)) ?
-				snprintf (out, sizeof(out), "\x0FEW%c", i + 1) :
+			if (on & (1 << i))
+				snprintf (out, sizeof(out), "\x0FEW%c", i + 1);
+			else
 				snprintf (out, sizeof(out), "\x0FEV%c", i + 1);
 			write (fd, out, 3);
 		}
@@ -721,6 +784,7 @@ MtxOrb_linewrap (int on)
 		write (fd, "\x0FE" "D", 2);
 		debug(RPT_DEBUG, "MtxOrb: linewrap turned off");
 	}
+	linewrapenabled = on;
 }
 
 /************************************************************************************
@@ -761,7 +825,7 @@ MtxOrb_cursorblink (int on)
 static void
 MtxOrb_init_vbar ()
 {
-	custom = bar;
+	custom = vbar;
 }
 
 /************************************************************************************
@@ -770,7 +834,7 @@ MtxOrb_init_vbar ()
 static void
 MtxOrb_init_hbar ()
 {
-	custom = bar;
+	custom = hbar;
 }
 
 /***********************************************************************************
@@ -915,6 +979,9 @@ MtxOrb_vbar (int x, int len)
 
 	debug(RPT_DEBUG, "MtxOrb: vertical bar at %d set to %d", x, len);
 
+	custom=vbar; 	// this is reset on MtxOrb_clear - so we might not get a
+   					// init_vbar if we're still on the same screen.
+
 /* REMOVE THE NEXT LINE FOR TESTING ONLY...*/
 /*  len=-len;*/
 /* REMOVE THE PREVIOUS LINE FOR TESTING ONLY...*/
@@ -922,9 +989,9 @@ MtxOrb_vbar (int x, int len)
 	if (len > 0) {
 		for (y = MtxOrb->hgt; y > 0 && len > 0; y--) {
 			if (len >= MtxOrb->cellhgt)
-				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb));
+				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb, 1));
 			else
-				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapu[len]));
+				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapu[len], 1));
 
 			len -= MtxOrb->cellhgt;
 		}
@@ -932,9 +999,9 @@ MtxOrb_vbar (int x, int len)
 		len = -len;
 		for (y = 2; y <= MtxOrb->hgt && len > 0; y++) {
 			if (len >= MtxOrb->cellhgt)
-				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb));
+				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb, 1));
 			else
-				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapd[len]));
+				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapd[len], 1));
 
 			len -= MtxOrb->cellhgt;
 		}
@@ -958,12 +1025,15 @@ MtxOrb_hbar (int x, int y, int len)
 
 	debug(RPT_DEBUG, "MtxOrb: horizontal bar at %d set to %d", x, len);
 
+	custom=hbar; 	// this is reset on MtxOrb_clear - so we might not get a
+   					// init_hbar if we're still on the same screen.
+
 	if (len > 0) {
 		for (; x <= MtxOrb->wid && len > 0; x++) {
 			if (len >= MtxOrb->cellwid)
-				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb));
+				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb, 1));
 			else
-				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapr[len]));
+				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapr[len], 1));
 
 			len -= MtxOrb->cellwid;
 
@@ -972,9 +1042,9 @@ MtxOrb_hbar (int x, int y, int len)
 		len = -len;
 		for (; x > 0 && len > 0; x--) {
 			if (len >= MtxOrb->cellwid)
-				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb));
+				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb, 1));
 			else
-				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapl[len]));
+				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapl[len], 1));
 
 			len -= MtxOrb->cellwid;
 
@@ -1005,10 +1075,6 @@ MtxOrb_init_num ()
 
 }
 
-/* TODO: MtxOrb_set_char is d ing the j b "real-time" as oppose
- * to at flush time. Call to this function should be done in flush
- * this mean in  raw_frame. GLU
- */
 /* TODO: Rather than to use the hardware BigNum we should use software
  * emulation, this will make it work simultaniously as hbar/vbar. GLU
  */
@@ -1032,6 +1098,15 @@ MtxOrb_num (int x, int num)
 	int y, dx;
 	char out[5];
 
+	if (custom!=bign)
+	{	// custom might not be set correctly because
+		// we reset it in MtxOrb_clear() - init won't be called again if
+		// we're still on the same screen.
+		
+		custom = bign;
+		MtxOrb_clear_custom ();
+	}
+
 	debug(RPT_DEBUG, "MtxOrb: write big number %d at %d", num, x);
 
 	snprintf (out, sizeof(out), "\x0FE#%c%c", x, num);
@@ -1049,23 +1124,18 @@ MtxOrb_num (int x, int num)
  * It is easy to keep the bitmap in this source file,
  * but we compute that once rather than every time. GLU
  */
-/* TODO: MtxOrb_set_char is doing the job "real-time" as oppose
- * to at flush time. Call to this function should be done in flush
- * this mean in draw_frame. GLU
- */
-/* TODO: _icon should not call this directly, this is why we define
- * so frequently the heartbeat custom char. GLU
- */
 /* TODO: We make one 3 bytes write folowed by MtxOrb->cellhgt one byte
  * write. This should be done in one single write. GLU
  */
 
-#define MAX_CUSTOM_CHARS 7
 
 /***********************************************************************************
  * Sets a custom character from 0-7...
  *
  * The input is just an array of characters...
+ *
+ * This function appears to be used internally only,
+ * other code in this file will break if that assumption is not true.
  */
 static void
 MtxOrb_set_char (int n, char *dat)
@@ -1074,7 +1144,7 @@ MtxOrb_set_char (int n, char *dat)
 	int row, col;
 	int letter;
 
-	if (n < 0 || n > MAX_CUSTOM_CHARS)
+	if (n < 0 || n >= NUM_CUSTOM_CHARS)
 		return;
 	if (!dat)
 		return;
@@ -1098,13 +1168,21 @@ MtxOrb_set_char (int n, char *dat)
 
 /************************************************************************************
  * Set an icon
+ * This function doesn't seem to be called.
+ * Don't use internally.
  */
 static void
 MtxOrb_icon (int which, char dest)
 {
-	if (custom == bign)
-		custom = beat;
-	MtxOrb_set_known_char (dest, START_ICON+which);
+
+	if ((which>=0) && (which<KNOWN_CHARS))
+	{
+		reassign(which); // reassign which if it's on screen.
+		sent[(int)dest]=0;
+		use[(int)dest]=1;
+		def[(int)dest]=which;
+		defCount[which]++;
+	}
 }
 
 /************************************************************************************
@@ -1118,14 +1196,48 @@ MtxOrb_draw_frame (char *dat)
 	char out[12];
 	int i,j,mv = 1;
 	unsigned char *p, *q;
+	static int called=0;
 
 	if (!dat)
 		return;
+
+	/* What ever you do - serial communications are not perfect and
+	 * transmissions errors do occur.  So we could end up with what
+	 * we think is on the lcd and what is actually on the lcd as being
+	 * different.  If it's in an area of the lcd that doesn't change
+	 * offern then an error could be on the lcd for a while.
+	 *
+	 * It's best to sync up every now and then - so I'm going to
+	 * really draw the whole lcd every 100 times this function is called.
+	 */
+	called++;
+	if (called>=100000)
+	{  // time to sync our view of the world and the lcd.
+		// Make our view dirty so the full screen is outputted.
+		memset(lcd_contains, DIRTY_CHAR, MtxOrb->wid * MtxOrb->hgt);
+
+		/* We could extend this idea further and reset the lcd
+		 * settings (contrast etc) - it's possible, because of a
+		 * transmission error that lcd was told to set things we
+		 * didn't want done! But I won't code that at the moment.
+		 */
+
+		called=0;
+	}
+
+	sendOutCustomChars();
 
     p = (unsigned char*)dat;
     q = lcd_contains;
 
 	for (i = 1; i <= MtxOrb->hgt; i++) {
+		/* if linewrap isn't enabled or we aren't allowed
+		 * to use linewrap then move to the start on each
+		 * line.
+		 */
+		if (!uselinewrap || !linewrapenabled)
+			mv =1;
+
 		for (j = 1; j <= MtxOrb->wid; j++) {
 
 			if ((*p == *q) || (*p == DIRTY_CHAR))
@@ -1214,153 +1326,144 @@ MtxOrb_getkey ()
  *  completely tested, just a quick hack.
  */
 static int
-MtxOrb_ask_bar (int type)
+MtxOrb_ask_bar (int type, int priority)
 {
 	int i;
-	int last_not_in_use;
-	int pos;			/* 0 is icon, 1 to 7 are free, 8 is not found.*/
+	int pos;			/* 0 to 7 are custom chars, 8 is not found.*/
 
 	// If the current LCD's font has a full block at character 255, then
 	// use that rather than define a custom character.
 	if ((type==barb) && (barb_is_255))
 		return(255);
 
-	/* TODO: Reuse graphic caracter 0 if heartbeat is not in use.*/
+	if ((type >= KNOWN_CHARS) || (type<0))
+		return type;
 
-	/* REMOVE: fprintf(stderr, "GLU: MtxOrb_ask_bar(%d).\n", type);*/
-	/* Check if the screen was clear. */
-	if (clear) {					/* If the screen was clear then graphic caracter are not in use.*/
-		/*REMOVE: fprintf(stderr, "GLU: MtxOrb_ask_bar| clear was set.\n");*/
-		use[0] = 1;				/* Heartbeat is always in use (not true but it help). */
-		for (pos = 1; pos < 8; pos++) {
-			use[pos] = 0;			/* Other are not in use. */
-		}
-		clear = 0;				/* We made the special treatement. */
-	} else {
-		/* Nothing special if some caracter a curently in use (...) ? */
-	}
+	if (custom==bign)
+		return approx_match(type);
 
-	/* Search for a match with character already defined. */
-	pos = 8;				/* Not found.*/
-	last_not_in_use = 8;			/* No empty slot to reuse.*/
-	for (i = 1; i < 8; i++) {		/* For all but first (heartbeat). */
-		if (!use[i])
-			last_not_in_use = i;	/* New empty slot. */
+	/* Check if it's already defined. */
+	pos = CUSTOM_NOT_FOUND;				/* Not found.*/
+	for (i = 0; i < NUM_CUSTOM_CHARS; i++) 
+	{		
 		if (def[i] == type)
-			pos = i;		/* Found (should break now). */
-	}
-
-	if (pos == 8) {
-		/* REMOVE: fprintf(stderr, "GLU: MtxOrb_ask_bar| not found.\n"); */
-		pos = last_not_in_use;
-		/* TODO: Best match/deep search is no more graphic caracter are available.*/
-	}
-
-	if (pos != 8) {				/* A caracter is found (Best match could solve our problem). */
-		/* REMOVE: fprintf(stderr, "GLU: MtxOrb_ask_bar| found at %d.\n", pos); */
-		if (def[pos] != type) {
-			MtxOrb_set_known_char (pos, type);	/* Define a new graphic caracter. */
-			def[pos] = type;		 	/* Remember that now the caracter is available. */
-		}
-		if (!use[pos]) {			  /* If the caracter is no yet in use (but defined). */
-			use[pos] = 1;			  /* Remember it is in use (so protect it from re-use).*/
+		{ /* Match found */
+			pos = i;		
+			break;
 		}
 	}
 
-	if (pos == 8)					  /* TODO: Choose a character to approximate the graph*/
+	if (pos==CUSTOM_NOT_FOUND)
+	{	// Still not found -- search for a slot that's unused.
+		// Choose the least used type.
+		// And try to avoid vbar chars if in vbar mode (same for hbar).
+		unsigned int minCount_own=0xFFFFFFFF;
+		unsigned int minCount_not_own=0xFFFFFFFF;
+		int pos_own=CUSTOM_NOT_FOUND;
+		int pos_not_own=CUSTOM_NOT_FOUND;
+
+		for (i = 0; i < NUM_CUSTOM_CHARS; i++) 
+		{		
+			if (!use[i])
+			{
+				int deftype=def[i];
+				int i_count=0;
+				int not_own_char=0;
+
+				// Try to avoid vbar chars if in vbar mode (same for hbar)
+				if (((custom==hbar) && (!IS_BARL(deftype)) 
+							        && (!IS_BARR(deftype))) ||
+					((custom==vbar) && (!IS_BARU(deftype)) 
+					 				&& (!IS_BARD(deftype))) ||
+					(custom==normal))
+				{
+					not_own_char=1;
+				}
+
+				// lookup how much this character has been used - ever.
+				if ((deftype>=0) && (deftype<KNOWN_CHARS))
+					i_count=defCount[deftype];
+
+				if ((not_own_char) && (i_count<minCount_not_own))
+				{
+					minCount_not_own = i_count;
+					pos_not_own = i;
+				}
+				else if ((!not_own_char) && (i_count<minCount_own))
+				{
+					minCount_own = i_count;
+					pos_own=i;
+				}
+			}
+		}
+
+		// Prefer using not one of our own... (vbar chars if in vbar mode etc)
+		if (pos_not_own != CUSTOM_NOT_FOUND)
+			pos = pos_not_own;
+		else
+			pos = pos_own;
+	}
+
+
+	/* We have found a slot to use */
+	if (pos != CUSTOM_NOT_FOUND) 
+	{	
+		if (def[pos] != type) 
+		{
+			def[pos] = type; /* Remember that now the character is available. */
+			sent[pos] = 0;
+			defCount[type]++; // count the number of time this has been defined
+		}
+		use[pos]=1;	  /* Remember it is in use. */
+	}
+
+
+	/* There are no free slots left...
+	 *
+	 * If priority is set (i.e. we're in vbar or hbar mode) then
+	 * take the slot from a non-bar character.
+	 */
+	if ((pos==CUSTOM_NOT_FOUND) && priority)
 	{
-		/*pos=65; */ /* ("A")?*/
-		switch (type) {
-		case baru1:
-			pos = '_';
-			break;
-		case baru2:
-			pos = '.';
-			break;
-		case baru3:
-			pos = ',';
-			break;
-		case baru4:
-			pos = 'o';
-			break;
-		case baru5:
-			pos = 'o';
-			break;
-		case baru6:
-			pos = 'O';
-			break;
-		case baru7:
-			pos = '8';
-			break;
+		int i;
+		unsigned int minCount=0xFFFFFFFF;
 
-		case bard1:
-			pos = '\'';
-			break;
-		case bard2:
-			pos = '"';
-			break;
-		case bard3:
-			pos = '^';
-			break;
-		case bard4:
-			pos = '^';
-			break;
-		case bard5:
-			pos = '*';
-			break;
-		case bard6:
-			pos = 'O';
-			break;
-		case bard7:
-			pos = '8';
-			break;
+		for (i=0; i<NUM_CUSTOM_CHARS;i++)
+		{
+			int deftype=def[i];
 
-		case barr1:
-			pos = '-';
-			break;
-		case barr2:
-			pos = '-';
-			break;
-		case barr3:
-			pos = '=';
-			break;
-		case barr4:
-			pos = '=';
-			break;
-
-		case barl1:
-			pos = '-';
-			break;
-		case barl2:
-			pos = '-';
-			break;
-		case barl3:
-			pos = '=';
-			break;
-		case barl4:
-			pos = '=';
-			break;
-
-		case barw:
-			pos = ' ';
-			break;
-
-		case barb:
-			pos = 255;
-			break;
-
-		case empty_heart:
-			pos = 'O';
-			break;
-
-		case filled_heart:
-			pos = '@';
-			break;
-
-		default:
-			pos = '?';
-			break;
+			/* don't steal from our own chars */
+			if (((custom==hbar) && (!IS_BARL(deftype)) 
+								&& (!IS_BARR(deftype))) ||
+				((custom==vbar) && (!IS_BARU(deftype)) 
+								&& (!IS_BARD(deftype))) ||
+				(custom==normal))
+			{
+				if (defCount[deftype]<minCount)
+				{
+					minCount=defCount[deftype];
+					pos=i;
+				}
+			}
 		}
+		if (pos!=CUSTOM_NOT_FOUND)
+		{
+			/* We are going to steal slot 'pos' */
+
+			reassign(pos);
+
+			/* now steal it */
+			def[pos]=type;
+			use[pos]=1;
+			defCount[type]++;
+			sent[pos]=0;
+		}
+	}
+
+	// Still no slot found - give up and give them an ascii character...
+	if (pos == CUSTOM_NOT_FOUND) 
+	{
+		pos = approx_match(type);
 	}
 
 	return (pos);
@@ -1384,17 +1487,10 @@ MtxOrb_heartbeat (int type)
 		/* Set this to pulsate like a real heart beat... */
 		whichIcon = (! ((timer + 4) & 5));
 
-		/* This defines a custom character EVERY time...
-		 * not efficient... is this necessary?
-		 */
-		/*MtxOrb_icon (whichIcon, 0);*/
-		the_icon=MtxOrb_ask_bar (whichIcon+START_ICON);
+		the_icon=MtxOrb_ask_bar (whichIcon+START_ICON, 0);
 
 		/* Put character on screen...*/
 		MtxOrb_chr (MtxOrb->wid, 1, the_icon);
-
-		/* change display...*/
-		MtxOrb_flush ();
 	}
 
 	timer++;
@@ -1407,7 +1503,7 @@ MtxOrb_heartbeat (int type)
 static void
 MtxOrb_set_known_char (int car, int type)
 {
-	char all_bar[26][5 * 8] = {
+	char all_bar[KNOWN_CHARS][5 * 8] = {
 		{
 		0, 0, 0, 0, 0,	//  char u1[] =
 		0, 0, 0, 0, 0,
@@ -1643,10 +1739,157 @@ MtxOrb_set_known_char (int car, int type)
 		1, 1, 1, 1, 1,
 		1, 1, 1, 1, 1,
 		}
-		
-
 	};
 
-	MtxOrb_set_char (car, &all_bar[type][0]);
+	if ((car < KNOWN_CHARS) && (car>=0))
+	{
+		MtxOrb_set_char (car, &all_bar[type][0]);
+	}
 }
 
+static void 
+sendOutCustomChars(void)
+{
+	int i;
+
+	for (i=0; i<NUM_CUSTOM_CHARS; i++)
+	{
+		if ((use[i]) && (!sent[i]))
+		{
+			MtxOrb_set_known_char (i, def[i]);
+			sent[i]=1;
+		}
+	}
+}
+
+/* TODO: Choose a character to approximate the graph*/
+static int
+approx_match(int type)
+{
+	int pos;
+
+	switch (type) {
+		case baru1:
+			pos = '_';
+			break;
+		case baru2:
+			pos = '.';
+			break;
+		case baru3:
+			pos = ',';
+			break;
+		case baru4:
+			pos = 'o';
+			break;
+		case baru5:
+			pos = 'o';
+			break;
+		case baru6:
+			pos = 'O';
+			break;
+		case baru7:
+			pos = '8';
+			break;
+
+		case bard1:
+			pos = '\'';
+			break;
+		case bard2:
+			pos = '"';
+			break;
+		case bard3:
+			pos = '^';
+			break;
+		case bard4:
+			pos = '^';
+			break;
+		case bard5:
+			pos = '*';
+			break;
+		case bard6:
+			pos = 'O';
+			break;
+		case bard7:
+			pos = '8';
+			break;
+
+		case barr1:
+			pos = '-';
+			break;
+		case barr2:
+			pos = '-';
+			break;
+		case barr3:
+			pos = '=';
+			break;
+		case barr4:
+			pos = '=';
+			break;
+
+		case barl1:
+			pos = '-';
+			break;
+		case barl2:
+			pos = '-';
+			break;
+		case barl3:
+			pos = '=';
+			break;
+		case barl4:
+			pos = '=';
+			break;
+
+		case barw:
+			pos = ' ';
+			break;
+
+		case barb:
+			pos = 255;
+			break;
+
+		case empty_heart:
+			pos = 'O';
+			break;
+
+		case filled_heart:
+			pos = '@';
+			break;
+
+		default:
+			pos = '?';
+			break;
+	}
+
+	return(pos);
+}
+
+/*
+ * Reassign uses of custom char 'pos' so it is freed up.
+ * Currently we just give it an approx character rather than
+ * checking if it could have a different slot in the cache.
+ */
+static void
+reassign(int pos)
+{
+	unsigned char *frame;
+	unsigned char newchar=0;
+	int i;
+
+	if ((pos<0) || (pos>=KNOWN_CHARS))
+		return;
+
+	/* We need to reassign the old character
+	 * [If any are there...]
+	 */
+	frame= (unsigned char *)MtxOrb->framebuf;
+	for (i = 1; i <= MtxOrb->hgt*MtxOrb->wid; i++) 
+	{
+		if (*frame == def[pos])
+		{
+			if (newchar==0)
+				newchar = approx_match(def[pos]);
+			*frame = newchar;
+		}
+		frame++;
+	}
+}
