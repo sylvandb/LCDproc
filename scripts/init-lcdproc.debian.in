@@ -16,9 +16,9 @@ DESC="lcdproc @VERSION@"
 
 prefix=@prefix@
 exec_prefix=@exec_prefix@
-$bindir=@bindir@
-$sbindir=@sbindir@
-$etc=@sysconfdir@
+bindir=@bindir@
+sbindir=@sbindir@
+etc=@sysconfdir@
 
 lcdproc=${bindir}/lcdproc
 
