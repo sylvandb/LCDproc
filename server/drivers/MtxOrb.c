@@ -102,8 +102,8 @@ typedef enum {
 	empty_heart = 22,
 	filled_heart = 23,
 	ellipsis = 24,
-	barw = 32,
-	barb = 255
+	barb = 25,
+	barw = 32
 } bar_type;
 
 static unsigned char *lcd_contains; // what we think is actually on the LCD
@@ -116,6 +116,7 @@ static int backlightenabled = MTXORB_DEF_BACKLIGHT;
 static char pause_key = MTXORB_DEF_PAUSE_KEY, back_key = MTXORB_DEF_BACK_KEY;
 static char forward_key = MTXORB_DEF_FORWARD_KEY, main_menu_key = MTXORB_DEF_MAIN_MENU_KEY;
 static int keypad_test_mode = 0;
+static int barb_is_255 = 1;
 
 static int def[9] = { -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 static int use[9] = { 1, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -283,6 +284,8 @@ MtxOrb_init (lcd_logical_driver * driver, char *args)
 		backlightenabled = 1;
 	}
 
+	barb_is_255 = config_get_bool( DriverName , "hasfullblock" , 0 , 1);
+
 	/* Get display type */
 	type=config_get_string ( DriverName , "type" , 0 , MTXORB_DEF_TYPE);
 
@@ -374,22 +377,14 @@ MtxOrb_init (lcd_logical_driver * driver, char *args)
 
 	tcgetattr (fd, &portset);
 
-	// THIS ALL COMMENTED OUT BECAUSE WE NEED TO SET TIMEOUTS
-	// We use RAW mode
-#ifdef HAVE_CFMAKERAW_NOT
-	// The easy way
-	cfmakeraw( &portset );
-#else
-	// The hard way
 	portset.c_iflag &= ~( IGNBRK | BRKINT | PARMRK | ISTRIP
 	                      | INLCR | IGNCR | ICRNL | IXON );
-	portset.c_oflag &= ~OPOST;
+	portset.c_oflag &= ~(OPOST | ONLCR);
 	portset.c_lflag &= ~( ECHO | ECHONL | ICANON | ISIG | IEXTEN );
 	portset.c_cflag &= ~( CSIZE | PARENB | CRTSCTS );
 	portset.c_cflag |= CS8 | CREAD | CLOCAL ;
 	portset.c_cc[VMIN] = 1;
 	portset.c_cc[VTIME] = 3;
-#endif
 
 	// Set port speed
 	cfsetospeed (&portset, speed);
@@ -406,6 +401,11 @@ MtxOrb_init (lcd_logical_driver * driver, char *args)
 	MtxOrb_autoscroll (MTXORB_DEF_AUTOSCROLL);
 	MtxOrb_cursorblink (MTXORB_DEF_CURSORBLINK);
 	MtxOrb_contrast (contrast);
+	/* Set autotransmit to on - so keys will be sent to
+	 * us automatically (usually the default but let's not make
+	 * any assumptions).
+	 */
+	write(fd, "\x0FE" "A", 2);
 
 	/*
 	 * Configure the display functions
@@ -922,7 +922,7 @@ MtxOrb_vbar (int x, int len)
 	if (len > 0) {
 		for (y = MtxOrb->hgt; y > 0 && len > 0; y--) {
 			if (len >= MtxOrb->cellhgt)
-				MtxOrb_chr (x, y, 255);
+				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb));
 			else
 				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapu[len]));
 
@@ -932,7 +932,7 @@ MtxOrb_vbar (int x, int len)
 		len = -len;
 		for (y = 2; y <= MtxOrb->hgt && len > 0; y++) {
 			if (len >= MtxOrb->cellhgt)
-				MtxOrb_chr (x, y, 255);
+				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb));
 			else
 				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapd[len]));
 
@@ -961,7 +961,7 @@ MtxOrb_hbar (int x, int y, int len)
 	if (len > 0) {
 		for (; x <= MtxOrb->wid && len > 0; x++) {
 			if (len >= MtxOrb->cellwid)
-				MtxOrb_chr (x, y, 255);
+				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb));
 			else
 				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapr[len]));
 
@@ -972,7 +972,7 @@ MtxOrb_hbar (int x, int y, int len)
 		len = -len;
 		for (; x > 0 && len > 0; x--) {
 			if (len >= MtxOrb->cellwid)
-				MtxOrb_chr (x, y, 255);
+				MtxOrb_chr (x, y, MtxOrb_ask_bar(barb));
 			else
 				MtxOrb_chr (x, y, MtxOrb_ask_bar (mapl[len]));
 
@@ -1219,6 +1219,12 @@ MtxOrb_ask_bar (int type)
 	int i;
 	int last_not_in_use;
 	int pos;			/* 0 is icon, 1 to 7 are free, 8 is not found.*/
+
+	// If the current LCD's font has a full block at character 255, then
+	// use that rather than define a custom character.
+	if ((type==barb) && (barb_is_255))
+		return(255);
+
 	/* TODO: Reuse graphic caracter 0 if heartbeat is not in use.*/
 
 	/* REMOVE: fprintf(stderr, "GLU: MtxOrb_ask_bar(%d).\n", type);*/
@@ -1343,6 +1349,14 @@ MtxOrb_ask_bar (int type)
 			pos = 255;
 			break;
 
+		case empty_heart:
+			pos = 'O';
+			break;
+
+		case filled_heart:
+			pos = '@';
+			break;
+
 		default:
 			pos = '?';
 			break;
@@ -1393,7 +1407,7 @@ MtxOrb_heartbeat (int type)
 static void
 MtxOrb_set_known_char (int car, int type)
 {
-	char all_bar[25][5 * 8] = {
+	char all_bar[26][5 * 8] = {
 		{
 		0, 0, 0, 0, 0,	//  char u1[] =
 		0, 0, 0, 0, 0,
@@ -1619,7 +1633,18 @@ MtxOrb_set_known_char (int car, int type)
 		0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0,
 		1, 0, 1, 0, 1,
+		}, {
+		1, 1, 1, 1, 1,	// barb
+		1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1,
 		}
+		
+
 	};
 
 	MtxOrb_set_char (car, &all_bar[type][0]);
