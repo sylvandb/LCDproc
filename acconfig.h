@@ -48,6 +48,8 @@
 
 #undef LB216_DRV
 
+#undef LCDM001_DRV
+
 #undef LCDPORT
 
 #undef LINUX
@@ -58,13 +60,13 @@
 
 #undef MTXORB_DRV
 
-#undef LCDM001_DRV
-
 #undef SED1330_DRV
 
 #undef SED1520_DRV
 
 #undef STV5730_DRV
+
+#undef SVGALIB_DRV
 
 #undef T6963_DRV
 
