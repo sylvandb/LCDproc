@@ -49,11 +49,11 @@ port_access (unsigned short int port)
 /* Assume this is a BSD system */
 #include <stdio.h>
 
-FILE *  port_access_handle = NULL ;
-
 static inline int
 port_access (unsigned short int port)
 {
+	static FILE *  port_access_handle = NULL ;
+
 	if( port_access_handle
 	    || (port_access_handle = fopen("/dev/io", "rw")) != NULL ) {
 		return( 0 );  /* Success */
