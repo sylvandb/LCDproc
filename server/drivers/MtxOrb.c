@@ -1208,10 +1208,10 @@ MtxOrb_draw_frame (char *dat)
 	 * offern then an error could be on the lcd for a while.
 	 *
 	 * It's best to sync up every now and then - so I'm going to
-	 * really draw the whole lcd every 100 times this function is called.
+	 * really draw the whole lcd every 1000 times this function is called.
 	 */
 	called++;
-	if (called>=100000)
+	if (called>=1000)
 	{  // time to sync our view of the world and the lcd.
 		// Make our view dirty so the full screen is outputted.
 		memset(lcd_contains, DIRTY_CHAR, MtxOrb->wid * MtxOrb->hgt);
