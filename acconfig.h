@@ -66,6 +66,8 @@
 
 #undef SED1520_DRV
 
+#undef SGX120_DRV
+
 #undef STV5730_DRV
 
 #undef SVGALIB_DRV
