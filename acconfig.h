@@ -18,11 +18,11 @@
 /*   Leave the following blank line there!!  Autoheader needs it.  */
 
 
-#undef LIRCIN_DRV
-
 #undef BAYRAD_DRV
 
 #undef CFONTZ_DRV
+
+#undef CFONTZ633_DRV
 
 #undef CURSES_DRV
 
@@ -53,6 +53,8 @@
 #undef LCDPORT
 
 #undef LINUX
+
+#undef LIRCIN_DRV
 
 #undef LOAD_MAX
 
