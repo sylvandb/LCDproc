@@ -24,6 +24,8 @@
 
 #undef CFONTZ633_DRV
 
+#undef CWLNX_DRV
+
 #undef CURSES_DRV
 
 #undef CURSES_HAS__ACS_CHAR
