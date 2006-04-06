@@ -1,8 +1,8 @@
-<sect1 id="lircin">
-<title>The lircin Driver</title>
+<sect1 id="lirc">
+<title>The lirc Driver</title>
 
 <para>
-The lircin driver enables you to use any IR remote control
+The lirc driver enables you to use any IR remote control
 that works with LIRC to control the LCDproc server
 (<application>LCDd</application>)
 and/or clients that can handle input.
@@ -28,11 +28,11 @@ are correct.
 
 </sect2>
 
-<sect2 id="lircin-configure">
-<title>Build LCDd with the lircin Driver</title>
+<sect2 id="lirc-configure">
+<title>Build LCDd with the lirc Driver</title>
 
 <para>
-You need to add lircin to the --enable-drivers=... list.
+You need to add lirc to the --enable-drivers=... list.
 </para>
 
 <para>
@@ -41,20 +41,20 @@ Then simply run make.
 
 </sect2>
 
-<sect2 id="lircin-config">
-<title>Configure LCDd to Use the lircin Driver</title>
+<sect2 id="lirc-config">
+<title>Configure LCDd to Use the lirc Driver</title>
 
 <para>
-First of all you need to activate the driver by adding a Driver=lircin line
+First of all you need to activate the driver by adding a Driver=lirc line
 to your <filename>LCDd.conf</filename>
 </para>
 
 <example>
-<title><filename>LCDd.conf</filename>: Activate the lircin driver</title>
+<title><filename>LCDd.conf</filename>: Activate the lirc driver</title>
 <programlisting>
 
 Driver=mtxorb
-Driver=lircin
+Driver=lirc
 
 </programlisting>
 </example>
@@ -65,16 +65,16 @@ as the input driver.
 </para>
 
 <para>
-Then you have to modify the [lircin] section of your
+Then you have to modify the [lirc] section of your
 <filename>LCDd.conf</filename>.
 </para>
 
-<sect3 id="lircin-section">
-<title><filename>LCDd.conf</filename>: The [lircin] Section</title>
+<sect3 id="lirc-section">
+<title><filename>LCDd.conf</filename>: The [lirc] Section</title>
 
 <para>
-The [lircin] section of the <filename>LCDd.conf</filename> contains the
-settings for the lircin LCDproc driver.
+The [lirc] section of the <filename>LCDd.conf</filename> contains the
+settings for the lirc LCDproc driver.
 </para>
 
 <variablelist>
@@ -84,10 +84,10 @@ settings for the lircin LCDproc driver.
 <para>
 <anchor id="which-lircrc" />Normally all LIRC clients scan the file <filename>~/.lircrc</filename>.
 However, you might want to have a separate file to configure the
-LCDproc lircin driver only.
+LCDproc lirc driver only.
 </para>
 <para>
-This option enables you to specify the file you want the lircin
+This option enables you to specify the file you want the lirc
 driver to scan.
 </para>
 </listitem>
@@ -111,6 +111,53 @@ The prog=... line must be the same as in your <filename>~/.lircrc</filename>
 
 </sect3>
 
+<!-- ## LIRC input driver ## -->
+<sect2 id="lirc-config">
+<title>Configuration in LCDd.conf</title>
+
+<sect3>
+<title>[lirc]</title>
+
+<variablelist>
+<varlistentry>
+  <term>
+    <command>lircrc=</command>
+    <arg choice="plain"><replaceable>FILENAME</replaceable></arg>
+  </term>
+  <listitem>
+    <para>
+    Normally all LIRC clients scan the file <filename>~/.lircrc</filename>.
+    However, you might want to have a separate file to configure the LCDproc lirc driver only. 
+    </para>
+    <para>
+    This option enables you to specify the file you want the lirc driver to scan.
+    If not given it defaults to <filename>~/.lircrc</filename>.
+    </para>
+  </listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>
+    <command>Prog=</command>
+    <arg choice="plain"><replaceable>PROGRAM</replaceable></arg>
+  </term>
+  <listitem>
+    <para>
+    All LIRC keys are assigned to a program using the prog=... option
+    in the lirc configuration file.
+    </para>
+    <para>
+    <replaceable>PROGRAM</replaceable> must be the same as in iyour lirc
+    configuration file.
+    </para>
+  </listitem>
+</varlistentry>
+</variablelist>
+
+</sect3>
+
+</sect2>
+
 </sect2>
 
 <sect2 id="lircrc">
@@ -118,7 +165,7 @@ The prog=... line must be the same as in your <filename>~/.lircrc</filename>
 
 <para>
 As mentioned above you can either modify the <filename>~/.lircrc</filename>
-or use a separate file for the lircin LCDproc driver (See
+or use a separate file for the lirc LCDproc driver (See
 <link linkend="which-lircrc">above</link> for details).
 </para>
 
@@ -128,31 +175,44 @@ lines to the file:
 </para>
 
 <example>
-<title><filename>~/.lircrc</filename>: Specify the keys for the lircin driver</title>
+<title><filename>~/.lircrc</filename>: Specify the associations from buttons to keysi
+for the lirc driver</title>
 <programlisting>
 
 begin
         prog = lcdd
         button = 2
-        config = A
+        config = Up
 end
 
 begin
         prog = lcdd
         button = 4
-        config = B
+        config = Left
 end
 
 begin
         prog = lcdd
         button = 6
-        config = C
+        config = Right
 end
 
 begin
         prog = lcdd
         button = 8
-        config = D
+        config = Down
+end
+
+begin
+        prog = lcdd
+        button = 1
+        config = Escape
+end
+
+begin
+        prog = lcdd
+        button = 0
+        config = Enter
 end
 
 
@@ -161,7 +221,18 @@ end
 
 <para>
 Which buttons you specify here depends on your RC and your LIRC configuration.
-Anyways, config=A/B/C/D is neccessary to control the server menu of LCDd.
+</para>
+
+<para>
+The <literal>config</literal> values need to be one of <literal>Up</literal>,
+<literal>Down</literal>, <literal>Left</literal>, <literal>Right</literal>,
+<literal>Escape</literal> or <literal>Enter</literal>.
+For LCDd's server menu at least the keys <literal>Up</literal>, <literal>Escape</literal>
+and <literal>Enter</literal> are necessary.
+</para>
+
+<para>
+<!-- TOTO: is this still true with 0.5 ? -->
 Of course you can define other keys. Those keys will not be handled by the
 server but sent to a client. Refer to the documentation of the client you want
 to use, to find out which keys are neccessary for that client.
