@@ -19,7 +19,7 @@ MODULE_EXPORT void MtxOrb_set_contrast (Driver *drvthis, int promille);
 MODULE_EXPORT void MtxOrb_backlight (Driver *drvthis, int on);
 MODULE_EXPORT void MtxOrb_output (Driver *drvthis, int on);
 
-MODULE_EXPORT char * MtxOrb_get_key (Driver *drvthis);
+MODULE_EXPORT const char * MtxOrb_get_key (Driver *drvthis);
 MODULE_EXPORT char * MtxOrb_get_info (Driver *drvthis);
 
 MODULE_EXPORT void MtxOrb_num (Driver *drvthis, int x, int num);
@@ -31,7 +31,7 @@ MODULE_EXPORT void MtxOrb_hbar (Driver * drvthis, int x, int y, int len, int pro
 
 #define DEFAULT_CONTRAST	480
 #define DEFAULT_DEVICE		"/dev/lcd"
-#define DEFAULT_SPEED		B19200
+#define DEFAULT_SPEED		19200
 #define DEFAULT_LINEWRAP	1
 #define DEFAULT_AUTOSCROLL	1
 #define DEFAULT_CURSORBLINK	0
@@ -43,7 +43,7 @@ MODULE_EXPORT void MtxOrb_hbar (Driver * drvthis, int x, int y, int len, int pro
 #define KEY_RIGHT 'A'
 #define KEY_F1    'N'
 /* TODO: add more if you've got any more ;) or correct the settings
- * the actual translation is done in MtxOrb_getkey()
+ * the actual translation is done in MtxOrb_get_key()
  */
 
 #endif

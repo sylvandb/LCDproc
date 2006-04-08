@@ -54,12 +54,12 @@
 #include "report.h"
 
 
-unsigned int sed1520_lptport = LPTPORT;
-char *framebuf = NULL;
-int width = LCD_DEFAULT_WIDTH;
-int height = LCD_DEFAULT_HEIGHT;
-int cellwidth = LCD_DEFAULT_CELLWIDTH;
-int cellheight = LCD_DEFAULT_CELLHEIGHT;
+static unsigned int port = LPTPORT;
+static unsigned char *framebuf = NULL;
+static int width = LCD_DEFAULT_WIDTH;
+static int height = LCD_DEFAULT_HEIGHT;
+static int cellwidth = LCD_DEFAULT_CELLWIDTH;
+static int cellheight = LCD_DEFAULT_CELLHEIGHT;
 
 
 // Vars for the server core
@@ -72,46 +72,46 @@ MODULE_EXPORT char *symbol_prefix = "sed1520_";
 // writes command value to one or both sed1520 selected by chip
 //
 void
-writecommand (int value, int chip)
+writecommand (unsigned int port, int value, int chip)
 {
-    port_out ( sed1520_lptport,value);
-    port_out ( sed1520_lptport + 2,WR + CS1 - (chip & CS1) + (chip & CS2));
-    port_out ( sed1520_lptport + 2,CS1 - (chip & CS1) + (chip & CS2));
-    uPause (IODELAY);
-    port_out ( sed1520_lptport + 2,WR + CS1 - (chip & CS1) + (chip & CS2));
-    uPause (IODELAY);
+    port_out(port, value);
+    port_out(port + 2, WR + CS1 - (chip & CS1) + (chip & CS2));
+    port_out(port + 2, CS1 - (chip & CS1) + (chip & CS2));
+    uPause(IODELAY);
+    port_out(port + 2, WR + CS1 - (chip & CS1) + (chip & CS2));
+    uPause(IODELAY);
 }
 
 /////////////////////////////////////////////////////////////////
 // writes data value to one or both sed 1520 selected by chip
 //
 void
-writedata (int value, int chip)
+writedata (unsigned int port, int value, int chip)
 {
-    port_out ( sed1520_lptport,value);
-    port_out ( sed1520_lptport + 2,A0 + WR + CS1 - (chip & CS1) + (chip & CS2));
-    port_out ( sed1520_lptport + 2,A0 + CS1 - (chip & CS1) + (chip & CS2));
-    uPause (IODELAY);
-    port_out ( sed1520_lptport + 2,A0 + WR + CS1 - (chip & CS1) + (chip & CS2));
-    uPause (IODELAY);
+    port_out(port, value);
+    port_out(port + 2, A0 + WR + CS1 - (chip & CS1) + (chip & CS2));
+    port_out(port + 2, A0 + CS1 - (chip & CS1) + (chip & CS2));
+    uPause(IODELAY);
+    port_out(port + 2, A0 + WR + CS1 - (chip & CS1) + (chip & CS2));
+    uPause(IODELAY);
 }
 
 /////////////////////////////////////////////////////////////////
 // selects a page (=row) on both sed1520s
 //
 void
-selectpage (int page)
+selectpage (unsigned int port, int page)
 {
-    writecommand (0xB8 + (page & 3), CS1 + CS2);
+    writecommand(port, 0xB8 + (page & 0x03), CS1 + CS2);
 }
 
 /////////////////////////////////////////////////////////////////
 // selects a column on the sed1520s specified by chip
 //
 void
-selectcolumn (int column, int chip)
+selectcolumn (unsigned int port, int column, int chip)
 {
-    writecommand ((column & 0x7F), chip);
+    writecommand(port, (column & 0x7F), chip);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -121,20 +121,18 @@ selectcolumn (int column, int chip)
 // in columns, so we need a little conversion.
 //
 void
-drawchar2fb (int x, int y, unsigned char z)
+drawchar2fb (unsigned char *framebuf, int x, int y, unsigned char z)
 {
-    int i, j, k;
+    int i, j;
 
-    if (x < 0 || x > 19 || y < 0 || y > 3)
+    if ((x < 0) || (x > 19) || (y < 0) || (y > 3))
 	return;
 
-    for (i = 6; i > 0; i--)
-      {
-	  k = 0;
-	  for (j = 0; j < 7; j++)
-	    {
-		k = k +
-		    (((fontmap[(int) z][j] * 2) & (1 << i)) / (1 << i)) *
+    for (i = 6; i > 0; i--) {
+	  int k = 0;
+
+	  for (j = 0; j < 7; j++) {
+		k += (((fontmap[(int) z][j] * 2) & (1 << i)) / (1 << i)) *
 		    (1 << j);
 	    }
 	  framebuf[(y * 122) + (x * 6) + (6 - i)] = k;
@@ -152,39 +150,43 @@ sed1520_init (Driver *drvthis)
     /* Read config file */
 
     /* What port to use */
-    sed1520_lptport = drvthis->config_get_int(drvthis->name, "Port", 0, LPTPORT);
+    port = drvthis->config_get_int(drvthis->name, "Port", 0, LPTPORT);
   
     /* End of config file parsing */
 
     if (timing_init() == -1) {
-	report(RPT_ERR, "timing_init: failed (%s)\n", strerror(errno));
+	report(RPT_ERR, "%s: timing_init() failed (%s)", drvthis->name, strerror(errno));
 	return -1;
     }
 
     // Allocate our framebuffer
-    framebuf = malloc (122 * 4);
-    if (!framebuf)
-      {
-	  // sed1520_close ();
-	  return -1;
+    framebuf = (unsigned char *) calloc(122 * 4, sizeof(unsigned char));
+    if (framebuf == NULL) {
+	report(RPT_ERR, "%s: unable to allocate framebuffer", drvthis->name);
+	// sed1520_close ();
+	return -1;
       }
 
     // clear screen
-    memset (framebuf, 0, 122 * 4);
+    memset (framebuf, '\0', 122 * 4);
 
     // Initialize the Port and the sed1520s
-    if(port_access(sed1520_lptport)) return -1;
-    if(port_access(sed1520_lptport+2)) return -1;
+    if (port_access(port) || port_access(port+2)) {
+	report(RPT_ERR, "%s: unable to access port 0x%03X", drvthis->name, port);
+	return -1;
+    }
 
-    port_out (sed1520_lptport,0);
-    port_out (sed1520_lptport +2,WR + CS2);
-    writecommand (0xE2, CS1 + CS2);
-    writecommand (0xAF, CS1 + CS2);
-    writecommand (0xC0, CS1 + CS2);
-    selectpage (3);
+    port_out(port,0);
+    port_out(port +2, WR + CS2);
+    writecommand(port, 0xE2, CS1 + CS2);
+    writecommand(port, 0xAF, CS1 + CS2);
+    writecommand(port, 0xC0, CS1 + CS2);
+    selectpage(port, 3);
 
     cellwidth = 6;
     cellheight = 8;
+
+    report(RPT_DEBUG, "%s: init() done", drvthis->name);
 
     return 0;
 }
@@ -196,7 +198,7 @@ MODULE_EXPORT void
 sed1520_close (Driver *drvthis)
 {
     if (framebuf != NULL)
-	free (framebuf);
+	free(framebuf);
     framebuf = NULL;
 }
 
@@ -206,7 +208,7 @@ sed1520_close (Driver *drvthis)
 MODULE_EXPORT int
 sed1520_width (Driver *drvthis)
 {
-	return width;
+    return width;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -215,7 +217,7 @@ sed1520_width (Driver *drvthis)
 MODULE_EXPORT int
 sed1520_height (Driver *drvthis)
 {
-	return height;
+    return height;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -224,7 +226,7 @@ sed1520_height (Driver *drvthis)
 MODULE_EXPORT int
 sed1520_cellwidth (Driver *drvthis)
 {
-	return cellwidth;
+    return cellwidth;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -233,7 +235,7 @@ sed1520_cellwidth (Driver *drvthis)
 MODULE_EXPORT int
 sed1520_cellheight (Driver *drvthis)
 {
-	return cellheight;
+    return cellheight;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -242,7 +244,7 @@ sed1520_cellheight (Driver *drvthis)
 MODULE_EXPORT void
 sed1520_clear (Driver *drvthis)
 {
-    memset (framebuf, 0, 488);
+    memset(framebuf, 0, 488);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -253,15 +255,17 @@ MODULE_EXPORT void
 sed1520_flush (Driver *drvthis)
 {
     int i, j;
-    for (i = 0; i < 4; i++)
-      {
-	  selectpage (i);
-	  selectcolumn (0, CS2) ;
+
+    for (i = 0; i < 4; i++) {
+	  selectpage(port, i);
+	  
+	  selectcolumn(port, 0, CS2) ;
 	  for (j = 0; j < 61; j++)
-	      writedata (framebuf[j + (i * 122)], CS2);
-	  selectcolumn (0, CS1) ;
+	      writedata(port, framebuf[j + (i * 122)], CS2);
+
+	  selectcolumn(port, 0, CS1) ;
 	  for (j = 61; j < 122; j++)
-	      writedata (framebuf[j + (i * 122)], CS1);
+	      writedata(port, framebuf[j + (i * 122)], CS1);
       }
 }
 
@@ -273,13 +277,12 @@ MODULE_EXPORT void
 sed1520_string (Driver *drvthis, int x, int y, char string[])
 {
     int i;
-    x--;			// Convert 1-based coords to 0-based...
+
+    x--;			// Convert 1-based coords to 0-based
     y--;
 
-    for (i = 0; string[i]; i++)
-      {
-	  drawchar2fb (x + i, y, string[i]);
-      }
+    for (i = 0; string[i] != '\0'; i++)
+	drawchar2fb(framebuf, x + i, y, string[i]);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -291,7 +294,7 @@ sed1520_chr (Driver *drvthis, int x, int y, char c)
 {
     y--;
     x--;
-    drawchar2fb (x, y, c);
+    drawchar2fb(framebuf, x, y, c);
 }
 
 /////////////////////////////////////////////////////////////////
@@ -307,48 +310,39 @@ sed1520_num (Driver *drvthis, int x, int num)
     int z, c, i, s;
     x--;
 
-    if (x < 0 || x > 19 || num < 0 || num > 10)
+    if ((x < 0) || (x > 19) || (num < 0) || (num > 10))
 	return;
     if (num != 10 && (x < 0 || x > 17))
 	return;
     if (num == 10 && (x < 0 || x > 19))
 	return;
 
-    if (num == 10)
-      {				// Doppelpunkt
-	  for (z = 0; z < 3; z++)
-	    {			// Zeilen a 8 Punkte
-		for (c = 0; c < 6; c++)
-		  {		// 6 Spalten
+    if (num == 10) {				// Doppelpunkt
+	  for (z = 0; z < 3; z++) {		// Zeilen a 8 Punkte
+		for (c = 0; c < 6; c++) {	// 6 Spalten
 		      s = 0;
-		      for (i = 0; i < 8; i++)
-			{	// 8 bits aus zeilen
+		      for (i = 0; i < 8; i++) {	// 8 bits aus zeilen
 			    s >>= 1;
 			    if (*(fontbigdp[(z * 8) + i] + c) == '.')
 				s += 128;
-			}
+		      }
 		      framebuf[(z * 122) + 122 + (x * 6) + c] = s;
-		  }
-	    }
-      }
-    else
-      {
-
-	  for (z = 0; z < 3; z++)
-	    {			// Zeilen a 8 Punkte
-		for (c = 0; c < 18; c++)
-		  {		// 18 Spalten
+		}
+	  }
+    }
+    else {
+	  for (z = 0; z < 3; z++) {		// Zeilen a 8 Punkte
+		for (c = 0; c < 18; c++) {	// 18 Spalten
 		      s = 0;
-		      for (i = 0; i < 8; i++)
-			{	// 8 bits aus zeilen
+		      for (i = 0; i < 8; i++) {	// 8 bits aus zeilen
 			    s >>= 1;
 			    if (*(fontbignum[num][z * 8 + i] + c) == '.')
 				s += 128;
-			}
+		      }
 		      framebuf[(z * 122) + 122 + (x * 6) + c] = s;
-		  }
-	    }
-      }
+		}
+	  }
+    }
 }
 
 
@@ -364,22 +358,21 @@ sed1520_num (Driver *drvthis, int x, int num)
 MODULE_EXPORT void
 sed1520_set_char (Driver *drvthis, int n, char *dat)
 {
-
     int row, col, i;
+
     if (n < 0 || n > 255)
 	return;
     if (!dat)
 	return;
-    for (row = 0; row < 8; row++)
-      {
+
+    for (row = 0; row < 8; row++) {
 	  i = 0;
-	  for (col = 0; col < 6; col++)
-	    {
+	  for (col = 0; col < 6; col++) {
 		i <<= 1;
 		i |= (dat[(row * 6) + col] > 0);
-	    }
+	  }
 	  fontmap[n][row] = i;
-      }
+    }
 }
 
 
@@ -391,18 +384,15 @@ MODULE_EXPORT void
 sed1520_old_vbar (Driver *drvthis, int x, int len)
 {
     int i, j, k;
+
     x--;
 
-
-    for (j = 0; j < 3; j++)
-      {
-	  i = 0;
+    for (j = 0; j < 3; j++) {
 	  k = 0;
-	  for (i = 0; i < 8; i++)
-	    {
+	  for (i = 0; i < 8; i++) {
 		if (len > i)
 		    k += 1 << (7 - i);
-	    }
+	  }
 
 	  framebuf[((3 - j) * 122) + (x * 6)] = 0;
 	  framebuf[((3 - j) * 122) + (x * 6) + 1] = 0;
@@ -411,8 +401,7 @@ sed1520_old_vbar (Driver *drvthis, int x, int len)
 	  framebuf[((3 - j) * 122) + (x * 6) + 4] = k;
 	  framebuf[((3 - j) * 122) + (x * 6) + 5] = 0;
 	  len -= 8;
-      }
-
+    }
 }
 
 
@@ -424,10 +413,11 @@ MODULE_EXPORT void
 sed1520_old_hbar (Driver *drvthis, int x, int y, int len)
 {
     int i;
+
     x--;
     y--;
 
-    if (y < 0 || y > 3 || x < 0 || len < 0 || (x + (len / 6)) > 19)
+    if ((y < 0) || (y > 3) || (x < 0) || (len < 0) || ((x + (len / 6)) > 19))
 	return;
 
     for (i = 0; i < len; i++)
@@ -461,18 +451,17 @@ sed1520_icon (Driver *drvthis, int x, int y, int icon)
     1, 1, 0, 1, 1,
     1, 1, 1, 1, 1 };
 
-  switch( icon )
-  {
+  switch (icon) {
     case ICON_BLOCK_FILLED:
-      sed1520_chr( drvthis, x, y, 255 );
+      sed1520_chr(drvthis, x, y, 255);
       break;
     case ICON_HEART_FILLED:
-      sed1520_set_char( drvthis, 0, heart_filled );
-      sed1520_chr( drvthis, x, y, 0 );
+      sed1520_set_char(drvthis, 0, heart_filled);
+      sed1520_chr(drvthis, x, y, 0);
       break;
     case ICON_HEART_OPEN:
-      sed1520_set_char( drvthis, 0, heart_open );
-      sed1520_chr( drvthis, x, y, 0 );
+      sed1520_set_char(drvthis, 0, heart_open);
+      sed1520_chr(drvthis, x, y, 0);
       break;
     default:
       return -1;
