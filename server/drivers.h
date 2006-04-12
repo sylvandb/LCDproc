@@ -41,7 +41,7 @@ drivers_load_driver( char * name );
 int
 drivers_unload_all();
 
-char *
+const char *
 drivers_get_info();
 
 void
@@ -98,7 +98,7 @@ drivers_backlight( int brightness );
 void
 drivers_output( int state );
 
-char *
+const char *
 drivers_get_key();
 
 extern LinkedList * loaded_drivers;
