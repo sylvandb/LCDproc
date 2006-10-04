@@ -19,6 +19,9 @@
 #include "mode.h"
 #include "main.h"
 #include "machine.h"
+#ifdef LCDPROC_EYEBOXONE
+# include "eyebox.h"
+#endif  
 
 // TODO: Clean this up...  Support multiple display sizes..
 
@@ -66,7 +69,17 @@ update_screen(mode *m, int display)
 	int old_status = status;
 
 	if (m && m->func) {
+#ifdef LCDPROC_EYEBOXONE
+		int init_flag = (m->flags & INITIALIZED);
+#endif  
 		status = m->func(m->timer, display, &(m->flags));
+#ifdef LCDPROC_EYEBOXONE
+		/* Eyebox Init */
+		if (init_flag == 0)
+			eyebox_screen(m->which,0);
+		/* Eyebox Flush */
+		eyebox_screen(m->which,1);
+#endif  
 	}
 
 	if (status != old_status)
