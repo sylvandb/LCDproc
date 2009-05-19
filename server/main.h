@@ -1,13 +1,13 @@
-/*
- * main.h
- * This file is part of LCDd, the lcdproc server.
+/** \file server/main.h
+ */
+
+/* This file is part of LCDd, the lcdproc server.
  *
- * This file is released under the GNU General Public License. Refer to the
- * COPYING file distributed with this package.
+ * This file is released under the GNU General Public License.
+ * Refer to the COPYING file distributed with this package.
  *
  * Copyright (c) 1999, William Ferrell, Scott Scriven
  *		 2001, Joris Robijn
- *
  */
 
 #ifndef MAIN_H
@@ -37,7 +37,7 @@ extern char *build_date;
 #define TIME_UNIT (1e6/RENDER_FREQ)
 /* Variable from stone age, still used a lot.  */
 
-extern long int timer;
+extern long timer;
 /* 32 bits at 8Hz will overflow in 2 ^ 29 = 5e8 seconds = 17 years.
  * If you get an overflow, please mail us and we will fix this personally
  * for you ! */
